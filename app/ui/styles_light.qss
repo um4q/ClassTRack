@@ -1,0 +1,192 @@
+/* Study Tracker - light theme (Settings > Theme). Same structure as
+   styles.qss (dark, default) with a light palette. */
+
+* {
+    outline: none;
+}
+
+QWidget {
+    background-color: #f8fafc;
+    color: #111827;
+    font-family: "Segoe UI", "Inter", sans-serif;
+    font-size: 10pt;
+    selection-background-color: #2563eb;
+    selection-color: #ffffff;
+}
+
+QMainWindow, QDialog {
+    background-color: #ffffff;
+}
+
+QListWidget#Sidebar {
+    background-color: #eef2f7;
+    border: none;
+    padding: 8px 4px;
+    font-size: 10.5pt;
+}
+QListWidget#Sidebar::item {
+    padding: 10px 12px;
+    border-radius: 8px;
+    margin: 2px 4px;
+    color: #111827;
+}
+QListWidget#Sidebar::item:selected {
+    background-color: #2563eb;
+    color: #ffffff;
+}
+QListWidget#Sidebar::item:hover:!selected {
+    background-color: #e2e8f0;
+}
+
+QFrame#Card, QFrame#CountdownCard {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 10px;
+}
+QFrame#Card QLabel[role="title"], QFrame#CountdownCard QLabel[role="title"] {
+    font-size: 11pt;
+    font-weight: 700;
+}
+
+QLabel#Banner {
+    background-color: #fef3c7;
+    color: #78350f;
+    padding: 6px 12px;
+    font-weight: 600;
+}
+QLabel#BannerInfo {
+    background-color: #dbeafe;
+    color: #1e3a8a;
+    padding: 6px 12px;
+    font-weight: 600;
+}
+
+QPushButton {
+    background-color: #ffffff;
+    color: #111827;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 6px 14px;
+}
+QPushButton:hover {
+    background-color: #f1f5f9;
+}
+QPushButton:pressed {
+    background-color: #e2e8f0;
+}
+QPushButton:disabled {
+    color: #94a3b8;
+}
+QPushButton#Primary {
+    background-color: #2563eb;
+    border-color: #2563eb;
+    color: white;
+    font-weight: 600;
+}
+QPushButton#Primary:hover {
+    background-color: #1d4ed8;
+}
+
+QLineEdit, QPlainTextEdit, QTextEdit, QSpinBox, QDoubleSpinBox, QComboBox, QDateEdit, QTimeEdit {
+    background-color: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 4px 6px;
+    color: #111827;
+}
+QComboBox QAbstractItemView {
+    background-color: #ffffff;
+    selection-background-color: #2563eb;
+    selection-color: white;
+}
+QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QDateEdit:focus, QTimeEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {
+    border: 1px solid #2563eb;
+}
+
+QTableView, QTreeView, QListView {
+    background-color: #ffffff;
+    alternate-background-color: #f8fafc;
+    gridline-color: #e2e8f0;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+}
+QHeaderView::section {
+    background-color: #f1f5f9;
+    color: #334155;
+    padding: 6px;
+    border: none;
+    border-bottom: 2px solid #cbd5e1;
+    font-weight: 600;
+}
+QTableView::item:selected, QTreeView::item:selected {
+    background-color: #2563eb;
+    color: white;
+}
+
+QProgressBar {
+    background-color: #e2e8f0;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    text-align: center;
+    color: #111827;
+}
+QProgressBar::chunk {
+    background-color: #22c55e;
+    border-radius: 5px;
+}
+
+QTabWidget::pane {
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    top: -1px;
+}
+QTabBar::tab {
+    background: #eef2f7;
+    color: #334155;
+    padding: 8px 16px;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    margin-right: 2px;
+}
+QTabBar::tab:selected {
+    background: #2563eb;
+    color: white;
+}
+
+QStatusBar {
+    background-color: #eef2f7;
+    color: #475569;
+}
+QCalendarWidget QAbstractItemView:enabled {
+    background-color: #ffffff;
+    color: #111827;
+    selection-background-color: #2563eb;
+    selection-color: white;
+}
+
+QScrollBar:vertical {
+    background: #f8fafc;
+    width: 12px;
+}
+QScrollBar::handle:vertical {
+    background: #cbd5e1;
+    border-radius: 5px;
+    min-height: 24px;
+}
+QScrollBar:horizontal {
+    background: #f8fafc;
+    height: 12px;
+}
+QScrollBar::handle:horizontal {
+    background: #cbd5e1;
+    border-radius: 5px;
+    min-width: 24px;
+}
+
+QToolTip {
+    background-color: #ffffff;
+    color: #111827;
+    border: 1px solid #cbd5e1;
+    padding: 4px;
+}

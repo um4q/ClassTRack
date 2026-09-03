@@ -1,0 +1,202 @@
+/* Study Tracker - dark theme (default). See settings_page.py for the
+   light theme (styles_light.qss) toggle. */
+
+* {
+    outline: none;
+}
+
+QWidget {
+    background-color: #111827;
+    color: #e5e7eb;
+    font-family: "Segoe UI", "Inter", sans-serif;
+    font-size: 10pt;
+    selection-background-color: #2563eb;
+    selection-color: #ffffff;
+}
+
+QMainWindow, QDialog {
+    background-color: #0f172a;
+}
+
+/* ---- Sidebar navigation ------------------------------------------- */
+QListWidget#Sidebar {
+    background-color: #0b1220;
+    border: none;
+    padding: 8px 4px;
+    font-size: 10.5pt;
+}
+QListWidget#Sidebar::item {
+    padding: 10px 12px;
+    border-radius: 8px;
+    margin: 2px 4px;
+}
+QListWidget#Sidebar::item:selected {
+    background-color: #2563eb;
+    color: #ffffff;
+}
+QListWidget#Sidebar::item:hover:!selected {
+    background-color: #1e293b;
+}
+
+/* ---- Cards ---------------------------------------------------------- */
+QFrame#Card, QFrame#CountdownCard {
+    background-color: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 10px;
+}
+QFrame#Card QLabel[role="title"], QFrame#CountdownCard QLabel[role="title"] {
+    font-size: 11pt;
+    font-weight: 700;
+}
+
+/* ---- Banner (save lock / empty workbook) ---------------------------- */
+QLabel#Banner {
+    background-color: #78350f;
+    color: #fef3c7;
+    padding: 6px 12px;
+    border-radius: 0px;
+    font-weight: 600;
+}
+QLabel#BannerInfo {
+    background-color: #1e3a8a;
+    color: #dbeafe;
+    padding: 6px 12px;
+    font-weight: 600;
+}
+
+/* ---- Buttons ---------------------------------------------------------- */
+QPushButton {
+    background-color: #1f2937;
+    color: #e5e7eb;
+    border: 1px solid #374151;
+    border-radius: 6px;
+    padding: 6px 14px;
+}
+QPushButton:hover {
+    background-color: #374151;
+}
+QPushButton:pressed {
+    background-color: #4b5563;
+}
+QPushButton:disabled {
+    color: #6b7280;
+}
+QPushButton#Primary {
+    background-color: #2563eb;
+    border-color: #2563eb;
+    color: white;
+    font-weight: 600;
+}
+QPushButton#Primary:hover {
+    background-color: #1d4ed8;
+}
+
+/* ---- Inputs --------------------------------------------------------- */
+QLineEdit, QPlainTextEdit, QTextEdit, QSpinBox, QDoubleSpinBox, QComboBox, QDateEdit, QTimeEdit {
+    background-color: #1f2937;
+    border: 1px solid #374151;
+    border-radius: 6px;
+    padding: 4px 6px;
+    color: #e5e7eb;
+}
+QComboBox QAbstractItemView {
+    background-color: #1f2937;
+    selection-background-color: #2563eb;
+}
+QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QDateEdit:focus, QTimeEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {
+    border: 1px solid #2563eb;
+}
+
+/* ---- Tables / trees --------------------------------------------------- */
+QTableView, QTreeView, QListView {
+    background-color: #0f172a;
+    alternate-background-color: #131f35;
+    gridline-color: #1f2937;
+    border: 1px solid #1f2937;
+    border-radius: 6px;
+}
+QHeaderView::section {
+    background-color: #1e293b;
+    color: #cbd5e1;
+    padding: 6px;
+    border: none;
+    border-bottom: 2px solid #334155;
+    font-weight: 600;
+}
+QTableView::item:selected, QTreeView::item:selected {
+    background-color: #2563eb;
+    color: white;
+}
+
+/* ---- Progress bars ------------------------------------------------- */
+QProgressBar {
+    background-color: #1f2937;
+    border: 1px solid #374151;
+    border-radius: 6px;
+    text-align: center;
+    color: #e5e7eb;
+}
+QProgressBar::chunk {
+    background-color: #22c55e;
+    border-radius: 5px;
+}
+
+/* ---- Tabs ------------------------------------------------------------ */
+QTabWidget::pane {
+    border: 1px solid #334155;
+    border-radius: 6px;
+    top: -1px;
+}
+QTabBar::tab {
+    background: #1e293b;
+    color: #cbd5e1;
+    padding: 8px 16px;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    margin-right: 2px;
+}
+QTabBar::tab:selected {
+    background: #2563eb;
+    color: white;
+}
+
+/* ---- Status bar / calendar -------------------------------------------- */
+QStatusBar {
+    background-color: #0b1220;
+    color: #94a3b8;
+}
+QCalendarWidget QAbstractItemView:enabled {
+    background-color: #0f172a;
+    color: #e5e7eb;
+    selection-background-color: #2563eb;
+}
+QCalendarWidget QToolButton {
+    color: #e5e7eb;
+}
+
+QScrollBar:vertical {
+    background: #0f172a;
+    width: 12px;
+}
+QScrollBar::handle:vertical {
+    background: #334155;
+    border-radius: 5px;
+    min-height: 24px;
+}
+QScrollBar:horizontal {
+    background: #0f172a;
+    height: 12px;
+}
+QScrollBar::handle:horizontal {
+    background: #334155;
+    border-radius: 5px;
+    min-width: 24px;
+}
+
+QToolTip {
+    background-color: #1e293b;
+    color: #e5e7eb;
+    border: 1px solid #334155;
+    padding: 4px;
+}

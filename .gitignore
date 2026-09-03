@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+data/app.log
+data/app.log.*
+data/backups/*.xlsx
+data/coursepacks/*
+!data/coursepacks/.gitkeep
