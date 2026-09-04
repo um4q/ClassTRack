@@ -54,10 +54,21 @@ class MainWindow(QMainWindow):
         if config.ICON_PATH.exists():
             self.setWindowIcon(QIcon(str(config.ICON_PATH)))
 
+        # Pages are constructed LAZILY (see _get_or_create_page) - the first
+        # visit to a page pays its construction cost, not startup. Profiling
+        # showed eagerly building all 11 (several with QChartView/
+        # QGraphicsView/rich text, each paying a one-time Qt warm-up cost)
+        # accounted for ~85% of MainWindow's construction time.
+        self._page_classes: dict[str, type] = {
+            "Dashboard": DashboardPage, "Courses": CoursesPage, "Tracker": TrackerPage,
+            "Roadmap": RoadmapPage, "Practice": PracticePage, "Mock Exam": MockExamPage,
+            "Review": ReviewPage, "Study Log": StudyLogPage, "Goals": GoalsPage,
+            "Settings": SettingsPage,
+        }
         self._pages: dict[str, QWidget] = {}
-        self._build_pages()
+        self._course_detail_page: CourseDetailPage | None = None
+
         self._build_shell()
-        self._wire_signals()
         self._build_shortcuts()
         self._build_tray()
 
@@ -82,31 +93,87 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(800, self._maybe_show_weekly_summary)
 
     # ------------------------------------------------------------ build --
-    def _build_pages(self) -> None:
-        self.dashboard_page = DashboardPage(self.store)
-        self.courses_page = CoursesPage(self.store)
-        self.course_detail_page = CourseDetailPage(self.store)
-        self.tracker_page = TrackerPage(self.store)
-        self.roadmap_page = RoadmapPage(self.store)
-        self.practice_page = PracticePage(self.store)
-        self.mock_exam_page = MockExamPage(self.store)
-        self.review_page = ReviewPage(self.store)
-        self.study_log_page = StudyLogPage(self.store)
-        self.goals_page = GoalsPage(self.store)
-        self.settings_page = SettingsPage(self.store)
+    def _get_or_create_page(self, name: str) -> QWidget:
+        page = self._pages.get(name)
+        if page is None:
+            page = self._page_classes[name](self.store)
+            self._pages[name] = page
+            self._wire_page_signals(name, page)
+            self.stack.addWidget(page)
+        return page
 
-        self._pages = {
-            "Dashboard": self.dashboard_page,
-            "Courses": self.courses_page,
-            "Tracker": self.tracker_page,
-            "Roadmap": self.roadmap_page,
-            "Practice": self.practice_page,
-            "Mock Exam": self.mock_exam_page,
-            "Review": self.review_page,
-            "Study Log": self.study_log_page,
-            "Goals": self.goals_page,
-            "Settings": self.settings_page,
-        }
+    def _get_or_create_course_detail_page(self) -> CourseDetailPage:
+        if self._course_detail_page is None:
+            page = CourseDetailPage(self.store)
+            self._course_detail_page = page
+            self._wire_page_signals("__course_detail__", page)
+            page.backRequested.connect(lambda: self.go_to_page("Courses"))
+            self.stack.addWidget(page)
+        return self._course_detail_page
+
+    def _wire_page_signals(self, name: str, page: QWidget) -> None:
+        """Generic contract (every page) + the small named cross-page
+        contract (see each page module's own docstring) - called once, at
+        the moment a page is first constructed."""
+        if hasattr(page, "statusMessage"):
+            page.statusMessage.connect(self.show_status_message)
+        if hasattr(page, "navigateTo"):
+            page.navigateTo.connect(self.go_to_page)
+        if name in ("Courses", "Dashboard"):
+            page.openCourse.connect(self.show_course_detail)
+        if name == "Dashboard":
+            page.quickBrainDump.connect(self.open_quick_brain_dump)
+            page.startTimerRequested.connect(self.start_timer_for)
+        if name == "Settings":
+            page.showWeeklySummaryRequested.connect(
+                lambda: self._show_weekly_summary_dialog(mark_shown=False)
+            )
+
+    # Backward/test-friendly named accessors - each lazily constructs its
+    # page on first access, same as navigating to it via the sidebar.
+    @property
+    def dashboard_page(self) -> DashboardPage:
+        return self._get_or_create_page("Dashboard")
+
+    @property
+    def courses_page(self) -> CoursesPage:
+        return self._get_or_create_page("Courses")
+
+    @property
+    def tracker_page(self) -> TrackerPage:
+        return self._get_or_create_page("Tracker")
+
+    @property
+    def roadmap_page(self) -> RoadmapPage:
+        return self._get_or_create_page("Roadmap")
+
+    @property
+    def practice_page(self) -> PracticePage:
+        return self._get_or_create_page("Practice")
+
+    @property
+    def mock_exam_page(self) -> MockExamPage:
+        return self._get_or_create_page("Mock Exam")
+
+    @property
+    def review_page(self) -> ReviewPage:
+        return self._get_or_create_page("Review")
+
+    @property
+    def study_log_page(self) -> StudyLogPage:
+        return self._get_or_create_page("Study Log")
+
+    @property
+    def goals_page(self) -> GoalsPage:
+        return self._get_or_create_page("Goals")
+
+    @property
+    def settings_page(self) -> SettingsPage:
+        return self._get_or_create_page("Settings")
+
+    @property
+    def course_detail_page(self) -> CourseDetailPage:
+        return self._get_or_create_course_detail_page()
 
     def _build_shell(self) -> None:
         central = QWidget()
@@ -134,30 +201,13 @@ class MainWindow(QMainWindow):
         self.sidebar.currentTextChanged.connect(self._on_sidebar_clicked)
         body_layout.addWidget(self.sidebar)
 
+        # Pages are added to the stack lazily, as each is first constructed
+        # (see _get_or_create_page) - the stack starts empty.
         self.stack = QStackedWidget()
-        for name in PAGE_ORDER:
-            self.stack.addWidget(self._pages[name])
-        self.stack.addWidget(self.course_detail_page)
         body_layout.addWidget(self.stack, 1)
 
         self.setCentralWidget(central)
         self.statusBar().showMessage("Ready")
-
-    def _wire_signals(self) -> None:
-        for page in list(self._pages.values()) + [self.course_detail_page]:
-            if hasattr(page, "statusMessage"):
-                page.statusMessage.connect(self.show_status_message)
-            if hasattr(page, "navigateTo"):
-                page.navigateTo.connect(self.go_to_page)
-
-        self.courses_page.openCourse.connect(self.show_course_detail)
-        self.dashboard_page.openCourse.connect(self.show_course_detail)
-        self.dashboard_page.quickBrainDump.connect(self.open_quick_brain_dump)
-        self.dashboard_page.startTimerRequested.connect(self.start_timer_for)
-        self.course_detail_page.backRequested.connect(lambda: self.go_to_page("Courses"))
-        self.settings_page.showWeeklySummaryRequested.connect(
-            lambda: self._show_weekly_summary_dialog(mark_shown=False)
-        )
 
     def _build_shortcuts(self) -> None:
         QShortcut(QKeySequence("Ctrl+S"), self, activated=lambda: self.store.save(force=True))
@@ -193,9 +243,10 @@ class MainWindow(QMainWindow):
 
     # --------------------------------------------------------- navigation --
     def go_to_page(self, name: str) -> None:
-        page = self._pages.get(name)
-        if page is None:
+        if name not in self._page_classes:
             return
+        already_existed = name in self._pages
+        page = self._get_or_create_page(name)
         self.stack.setCurrentWidget(page)
         for i in range(self.sidebar.count()):
             if self.sidebar.item(i).text() == name:
@@ -203,21 +254,31 @@ class MainWindow(QMainWindow):
                 self.sidebar.setCurrentRow(i)
                 self.sidebar.blockSignals(False)
                 break
-        try:
-            page.refresh()
-        except Exception:
-            logger.exception("refresh() failed for page %s", name)
+        # A freshly-constructed page's own __init__ already called refresh()
+        # once - only re-refresh on a RETURN visit, so first navigation to
+        # any page doesn't pay for the same computation twice.
+        if already_existed:
+            try:
+                page.refresh()
+            except Exception:
+                logger.exception("refresh() failed for page %s", name)
 
     def _on_sidebar_clicked(self, name: str) -> None:
         if name:
             self.go_to_page(name)
 
     def show_course_detail(self, course_id: int) -> None:
+        # Unlike go_to_page(), no double-refresh concern here: a freshly
+        # constructed CourseDetailPage's __init__ refreshes once with no
+        # course selected, and show_course() below always refreshes again
+        # for real with the actual course - that second call is necessary
+        # work, not redundant.
+        page = self._get_or_create_course_detail_page()
         try:
-            self.course_detail_page.show_course(course_id)
+            page.show_course(course_id)
         except Exception:
             logger.exception("show_course(%s) failed", course_id)
-        self.stack.setCurrentWidget(self.course_detail_page)
+        self.stack.setCurrentWidget(page)
         self.sidebar.blockSignals(True)
         self.sidebar.setCurrentRow(-1)
         self.sidebar.blockSignals(False)

@@ -221,7 +221,7 @@ class CountdownCard(QFrame):
             # the caller's own closure captured (e.g. a loop variable bound
             # via `lambda x=x: ...`) - wrap it so on_click is always called
             # with zero arguments, matching its documented Callable[[], None].
-            btn.clicked.connect(lambda checked=False, _cb=on_click: _cb())
+            btn.clicked.connect(lambda *_args, _cb=on_click: _cb())
             layout.addWidget(btn)
 
 
@@ -248,7 +248,7 @@ def make_button_grid(items: list[tuple[str, Optional[str], Callable[[], None]]],
         # Qt clobbers a caller's `lambda x=x: fn(x)` loop-variable capture
         # with that bool (this was the root cause of "no course selected"
         # after clicking a course card: cid got overwritten with False/0).
-        btn.clicked.connect(lambda checked=False, _cb=on_click: _cb())
+        btn.clicked.connect(lambda *_args, _cb=on_click: _cb())
         grid.addWidget(btn, idx // columns, idx % columns)
     if not items:
         grid.addWidget(QLabel("(none yet)"), 0, 0)

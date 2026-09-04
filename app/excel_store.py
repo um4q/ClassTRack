@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import re
 import shutil
 import typing
 from datetime import date, datetime, time
@@ -203,7 +204,12 @@ class ExcelStore(QObject):
         against data/ - relative paths in the workbook are relative to data/."""
         if not rel:
             return None
-        rel = rel.split("#", 1)[0]  # strip a trailing #page=N if present
+        # Strip only a TRAILING "#page=N" suffix - filenames in this export
+        # legitimately contain a literal "#" (e.g. "CP#1400 - CMTC 2341.pdf"),
+        # so splitting on the first "#" anywhere (the old behavior) truncated
+        # every CMTC2341 link to "...Content/CP", breaking every Open button
+        # for that course's materials/topics/prelabs.
+        rel = re.sub(r"#page=\d+$", "", rel, flags=re.IGNORECASE)
         p = Path(rel)
         return p if p.is_absolute() else (config.DATA_DIR / rel)
 
