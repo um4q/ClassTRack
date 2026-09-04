@@ -215,7 +215,13 @@ class CountdownCard(QFrame):
 
         if on_click is not None:
             btn = QPushButton("Open")
-            btn.clicked.connect(on_click)
+            # NOTE: QPushButton.clicked emits clicked(bool checked=False). A
+            # bare `btn.clicked.connect(on_click)` lets Qt pass that bool
+            # into on_click's first parameter, silently clobbering whatever
+            # the caller's own closure captured (e.g. a loop variable bound
+            # via `lambda x=x: ...`) - wrap it so on_click is always called
+            # with zero arguments, matching its documented Callable[[], None].
+            btn.clicked.connect(lambda checked=False, _cb=on_click: _cb())
             layout.addWidget(btn)
 
 
@@ -237,7 +243,12 @@ def make_button_grid(items: list[tuple[str, Optional[str], Callable[[], None]]],
                 f"font-weight: 600; padding: 8px; border-radius: 6px; text-align: left; }}"
                 f"QPushButton:hover {{ background-color: {color_hex}; }}"
             )
-        btn.clicked.connect(on_click)
+        # Same fix as CountdownCard above: absorb clicked's bool `checked`
+        # argument so on_click always runs with zero arguments - otherwise
+        # Qt clobbers a caller's `lambda x=x: fn(x)` loop-variable capture
+        # with that bool (this was the root cause of "no course selected"
+        # after clicking a course card: cid got overwritten with False/0).
+        btn.clicked.connect(lambda checked=False, _cb=on_click: _cb())
         grid.addWidget(btn, idx // columns, idx % columns)
     if not items:
         grid.addWidget(QLabel("(none yet)"), 0, 0)
