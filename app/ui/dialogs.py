@@ -117,7 +117,8 @@ class RowEditDialog(QDialog):
         elif isinstance(editor, QCheckBox):
             setattr(self.obj, attr, editor.isChecked())
         elif isinstance(editor, QComboBox):
-            setattr(self.obj, attr, editor.currentText())
+            text = editor.currentText()
+            setattr(self.obj, attr, int(text) if text.isdigit() else text)
         elif isinstance(editor, QDateEdit):
             qd = editor.date()
             setattr(self.obj, attr, None if qd == _NO_DATE else date(qd.year(), qd.month(), qd.day()))

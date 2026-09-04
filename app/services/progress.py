@@ -203,4 +203,6 @@ def goal_status(goal: Goal) -> str:
     """Active/Achieved/Missed from current_value vs target_value and dates."""
     if goal.current_value is not None and goal.current_value >= goal.target_value:
         return "Achieved"
+    if goal.end_date is not None and goal.end_date < date.today():
+        return "Missed"
     return "Active"

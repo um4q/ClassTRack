@@ -1380,7 +1380,7 @@ class CourseDetailPage(QWidget):
 
         entries = sorted(
             self.store.list_study_log(self.course_id),
-            key=lambda e: (e.date is None, e.date or date.min), reverse=True,
+            key=lambda e: (e.date is None, -(e.date.toordinal() if e.date is not None else 0)),
         )
         self._studylog_model.set_rows(entries)
         self._build_study_chart(entries)
@@ -1524,7 +1524,7 @@ class CourseDetailPage(QWidget):
     def _refresh_attendance_tab(self) -> None:
         entries = sorted(
             self.store.list_attendance(self.course_id),
-            key=lambda a: (a.date is None, a.date or date.min), reverse=True,
+            key=lambda a: (a.date is None, -(a.date.toordinal() if a.date is not None else 0)),
         )
         self._attendance_model.set_rows(entries)
         total = len(entries)

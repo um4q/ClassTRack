@@ -720,7 +720,7 @@ class ExcelStore(QObject):
     # -- StudyLog -------------------------------------------------------
     def list_study_log(self, course_id: Optional[int] = None) -> list[StudyLogEntry]:
         rows = self._list_rows("StudyLog", StudyLogEntry)
-        rows.sort(key=lambda s: s.date or date.min)
+        rows.sort(key=lambda s: (s.date is None, s.date or date.max))
         return [s for s in rows if s.course_id == course_id] if course_id is not None else rows
 
     def get_study_log_entry(self, log_id: int) -> Optional[StudyLogEntry]:
@@ -788,7 +788,7 @@ class ExcelStore(QObject):
     # -- MockExams ----------------------------------------------------------
     def list_mock_exams(self, course_id: Optional[int] = None) -> list[MockExam]:
         rows = self._list_rows("MockExams", MockExam)
-        rows.sort(key=lambda m: m.date_taken or date.min)
+        rows.sort(key=lambda m: (m.date_taken is None, m.date_taken or date.max))
         return [m for m in rows if m.course_id == course_id] if course_id is not None else rows
 
     def get_mock_exam(self, exam_id: int) -> Optional[MockExam]:

@@ -816,7 +816,7 @@ class MockExamPage(QWidget):
             return
         total = len(self._exam_questions)
         score = float(sum(1 for v in self._final_correct.values() if v))
-        course = self.store.get_course(self._exam_course_id) if self._exam_course_id else None
+        course = self.store.get_course(self._exam_course_id) if self._exam_course_id is not None else None
         code = course.code if course else "?"
 
         results = {

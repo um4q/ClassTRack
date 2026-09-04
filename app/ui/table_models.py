@@ -152,6 +152,8 @@ class DataclassTableModel(QAbstractTableModel):
             return date(value.year(), value.month(), value.day())
         if col.kind == "time" and isinstance(value, QTime):
             return time(value.hour(), value.minute())
+        if col.kind == "combo" and isinstance(value, str) and value.isdigit():
+            return int(value)
         return value
 
 
