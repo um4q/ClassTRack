@@ -183,13 +183,26 @@ class ExcelStore(QObject):
     def is_dirty(self) -> bool:
         return self._dirty
 
+    @property
+    def backups_dir(self) -> Path:
+        """Backups live next to whatever workbook this store actually has
+        open (self.path.parent / "backups"), not a hardcoded config
+        constant - so a store pointed at a non-default path (a test's tmp
+        copy, a future multi-workbook feature) backs up alongside ITS OWN
+        file instead of silently writing into the real project's
+        data/backups/. For the normal default path this is exactly
+        config.BACKUPS_DIR, since that's defined as DATA_DIR / "backups"
+        and DATA_DIR is WORKBOOK_PATH's own parent."""
+        return self.path.parent / "backups"
+
     def backup_now(self) -> Optional[Path]:
         if not self.path.exists():
             return None
         try:
-            config.BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
+            backups_dir = self.backups_dir
+            backups_dir.mkdir(parents=True, exist_ok=True)
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            dest = config.BACKUPS_DIR / f"study_tracker_{ts}.xlsx"
+            dest = backups_dir / f"study_tracker_{ts}.xlsx"
             shutil.copy2(self.path, dest)
             self._prune_backups()
             return dest
@@ -199,7 +212,7 @@ class ExcelStore(QObject):
 
     def _prune_backups(self) -> None:
         backups = sorted(
-            config.BACKUPS_DIR.glob("study_tracker_*.xlsx"),
+            self.backups_dir.glob("study_tracker_*.xlsx"),
             key=lambda p: p.stat().st_mtime,
         )
         while len(backups) > config.BACKUP_KEEP_COUNT:
