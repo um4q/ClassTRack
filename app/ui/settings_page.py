@@ -228,6 +228,7 @@ class SettingsPage(QWidget):
         content_layout.addWidget(self._build_appearance_group())
         content_layout.addWidget(self._build_pdf_opener_group())
         content_layout.addWidget(self._build_actions_group())
+        content_layout.addWidget(self._build_shortcuts_group())
         content_layout.addStretch(1)
 
         scroll.setWidget(content)
@@ -366,6 +367,28 @@ class SettingsPage(QWidget):
         summary_btn.clicked.connect(self._guard(self._on_show_weekly_summary))
         add_row(ics_btn, syllabus_btn, summary_btn)
 
+        return box
+
+    def _build_shortcuts_group(self) -> QGroupBox:
+        """A discoverable in-app reference for the global shortcuts - they
+        have no menu bar to live in otherwise, so this is the only place a
+        user would ever see them without reading the README."""
+        box = QGroupBox("Keyboard shortcuts")
+        form = QFormLayout(box)
+        shortcuts = [
+            ("Ctrl+S", "Save now"),
+            ("Ctrl+N", "New brain-dump note (today)"),
+            ("Ctrl+R", "Reload from Excel"),
+            ("Ctrl+T", "Start/stop the study timer"),
+            ("Ctrl+1 .. Ctrl+9", "Jump to a sidebar page"),
+        ]
+        for keys, desc in shortcuts:
+            key_lbl = QLabel(keys)
+            key_lbl.setStyleSheet(
+                "font-family: monospace; background-color: rgba(128,128,128,40); "
+                "padding: 2px 6px; border-radius: 4px;"
+            )
+            form.addRow(key_lbl, QLabel(desc))
         return box
 
     # ------------------------------------------------------------------
