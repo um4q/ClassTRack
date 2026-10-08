@@ -90,3 +90,10 @@ study_tracker/
 
 `Ctrl+S` save now · `Ctrl+N` new note · `Ctrl+1`..`Ctrl+9` jump to sidebar page
 · `Ctrl+R` reload from Excel · `Ctrl+T` start/stop the study timer.
+
+## TI-84 Plus CE program (hex + DGH checksums)
+
+`ti84/HEXCHK.8xp` is a calculator program for the TI-84 Plus CE. It does hex
+add/subtract and 2-character DGH command checksums (`$1RD` → `$1RDEB`, for
+CMTC 2341 Lab 2). Drag it onto the calculator in TI Connect CE. See
+[`ti84/README.md`](ti84/README.md) for setup and keypresses.

@@ -1,0 +1,309 @@
+# HEXCHK - hex add/subtract + DGH-style 2-character checksums
+# for the TI-84 Plus CE.  Build the .8xp with:  python ti84/build.py
+#
+# Source format: one TI-BASIC line per text line, written with the
+# calculator's own token names ("Disp ", "→", "Str1", "sub(", ...).
+# Lines starting with "#" are comments and are NOT sent to the calculator.
+#
+# Variables: Str0 = hex digits, Str8 = ASCII lookup (chars 32-126 in order,
+# minus the double quote, which a TI string can't hold), Str1-Str7/Str9 =
+# work strings, A-Z = numbers.  All Str vars are deleted again on QUIT.
+#
+# Rule kept everywhere: Goto / Menu( only at the top level, never from
+# inside an unfinished If-Then / For( / While block (that leaks memory and
+# ends in ERR:MEMORY on a real calculator).
+#
+ClrHome
+"0123456789ABCDEF"→Str0
+" !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~"→Str8
+#
+# ---------------------------------------------------------------- main menu
+Lbl M
+Menu("HEX + CHECKSUM","HEX ADD/SUBTRACT",A,"DEC TO HEX",D,"DGH CHECKSUM",B,"VERIFY A CHECKSUM",V,"HEX BYTES CHECKSUM",H,"HELP",K,"QUIT",Q)
+#
+# ------------------------------------------------- hex add / dec to hex
+# Same code for both; B = number base of what the user types (16 or 10).
+Lbl A
+16→B
+Goto N
+Lbl D
+10→B
+Lbl N
+ClrHome
+If B=16:Then
+Disp "HEX ADD/SUBTRACT","EG 24+31+52+44","A-F: PRESS ALPHA FIRST"
+Else
+Disp "DECIMAL TO HEX","EG 235  OR  200+35"
+End
+Disp "BLANK ENTRY = MENU"
+Lbl N2
+Input ">",Str1
+If length(Str1)=0:Goto M
+0→T
+0→N
+1→S
+0→P
+0→O
+For(I,1,length(Str1))
+sub(Str1,I,1)→Str2
+inString(sub(Str0,1,B),Str2)→X
+If X:Then
+B*N+X-1→N
+If N≥1ᴇ12:1→O
+Else
+If Str2="+" or Str2="-" or Str2="⁻" or Str2=" " or Str2=",":Then
+T+S*N→T
+0→N
+1-2*(Str2="-" or Str2="⁻")→S
+Else
+If not(P):I→P
+End
+End
+End
+T+S*N→T
+If abs(T)≥1ᴇ12:1→O
+If P:Then
+Disp "NOT A DIGIT: "+sub(Str1,P,1)
+End
+If O and not(P):Then
+Disp "NUMBER TOO BIG"
+End
+If P or O:Goto N2
+# hex of |T| -> Str6, decimal of |T| -> Str5
+abs(T)→V
+sub(Str0,V-16*int(V/16)+1,1)→Str6
+int(V/16)→V
+While V
+sub(Str0,V-16*int(V/16)+1,1)+Str6→Str6
+int(V/16)→V
+End
+abs(T)→V
+sub(Str0,V-10*int(V/10)+1,1)→Str5
+int(V/10)→V
+While V
+sub(Str0,V-10*int(V/10)+1,1)+Str5→Str5
+int(V/10)→V
+End
+If T<0:Then
+"-"+Str6→Str6
+"-"+Str5→Str5
+End
+# low byte (T mod 256, two's complement when T<0)
+T-256*int(T/256)→L
+sub(Str0,int(L/16)+1,1)+sub(Str0,L-16*int(L/16)+1,1)→Str3
+Disp "= "+Str6+" HEX","= "+Str5+" DEC"
+If T≥0:Then
+Disp "LAST 2 HEX DIGITS: "+Str3
+Else
+Disp "8-BIT 2'S COMP: "+Str3
+End
+Goto N2
+#
+# -------------------------------------- DGH checksum / verify a checksum
+# W=0: work out the checksum.  W=1: check one typed on the end.
+Lbl B
+0→W
+Goto F
+Lbl V
+1→W
+Lbl F
+Menu("FIRST CHARACTER","$  COMMAND",F1,"#  COMMAND",F2,"*  RESPONSE",F3,"?  ERROR RESPONSE",F4,"NONE / TYPE IT ALL",F5,"BACK",M)
+Lbl F1
+ClrHome
+Disp "TYPE ADDRESS+COMMAND","EG 1RD"
+Input "$",Str1
+"$"+Str1→Str1
+Goto F6
+Lbl F2
+ClrHome
+Disp "TYPE ADDRESS+COMMAND","EG 1RD"
+Input "#",Str1
+"#"+Str1→Str1
+Goto F6
+Lbl F3
+ClrHome
+Disp "TYPE THE REST","EG +00072.10"
+Input "*",Str1
+"*"+Str1→Str1
+Goto F6
+Lbl F4
+ClrHome
+Disp "TYPE THE REST"
+Input "?",Str1
+"?"+Str1→Str1
+Goto F6
+Lbl F5
+ClrHome
+Disp "TYPE THE WHOLE STRING"
+Input ">",Str1
+Lbl F6
+If length(Str1)=0:Goto F
+If W=1 and length(Str1)<3:Then
+Disp "TOO SHORT - TYPE THE","STRING AND ITS 2-CHARACTER","CHECKSUM"
+Pause
+End
+If W=1 and length(Str1)<3:Goto F
+If W=1:Then
+sub(Str1,length(Str1)-1,2)→Str9
+sub(Str1,1,length(Str1)-2)→Str1
+End
+# one row per character: char, its ASCII hex, running sum (hex)
+ClrHome
+Disp "CHR  HEX  SUM"
+0→S
+0→P
+0→R
+For(I,1,length(Str1))
+sub(Str1,I,1)→Str2
+If Str2="⁻":"-"→Str2
+inString(Str8,Str2)→C
+If C:C+31+(C>2)→C
+If not(C) and not(P):I→P
+S+C→S
+If C:Then
+sub(Str0,int(C/16)+1,1)+sub(Str0,C-16*int(C/16)+1,1)→Str3
+Else
+"??"→Str3
+End
+S→V
+sub(Str0,V-16*int(V/16)+1,1)→Str4
+int(V/16)→V
+While V
+sub(Str0,V-16*int(V/16)+1,1)+Str4→Str4
+int(V/16)→V
+End
+Disp " "+Str2+"   "+Str3+"   "+Str4
+R+1→R
+If R=8 and I<length(Str1):Then
+Pause
+ClrHome
+Disp "CHR  HEX  SUM"
+0→R
+End
+End
+If P:Then
+Disp "NOT AN ASCII CHARACTER:",sub(Str1,P,1)
+Pause
+End
+If P:Goto F
+# a full last page would push its top rows off the 10-line screen
+If R>5:Then
+Pause
+ClrHome
+End
+# Str4 = sum in hex, Str5 = sum in decimal, Str3 = checksum (last 2 hex)
+S→V
+sub(Str0,V-10*int(V/10)+1,1)→Str5
+int(V/10)→V
+While V
+sub(Str0,V-10*int(V/10)+1,1)+Str5→Str5
+int(V/10)→V
+End
+S-256*int(S/256)→L
+sub(Str0,int(L/16)+1,1)+sub(Str0,L-16*int(L/16)+1,1)→Str3
+Disp "SUM = "+Str4+" HEX ("+Str5+")","CHECKSUM = "+Str3
+If W=0:Then
+Str1+Str3→Str5
+Disp "SEND THIS:"
+For(I,1,length(Str5),26)
+Disp sub(Str5,I,min(26,length(Str5)-I+1))
+End
+Else
+If Str9=Str3:Then
+Disp "RECEIVED "+Str9+" = MATCH, OK"
+Else
+Disp "RECEIVED "+Str9+" = WRONG!"
+End
+End
+Pause
+Goto F
+#
+# ------------------------------------------------- hex bytes checksum
+# Byte pairs, e.g. Intel HEX "0300300002337A" or a Modbus ASCII frame.
+Lbl H
+ClrHome
+Disp "HEX BYTES CHECKSUM","TYPE BYTES (2 DIGITS EACH)","EG 0300300002337A","SPACES ARE IGNORED","BLANK ENTRY = MENU"
+Lbl H2
+Input "BYTES:",Str1
+If length(Str1)=0:Goto M
+0→S
+0→X
+0→N
+0→K
+0→J
+0→P
+For(I,1,length(Str1))
+sub(Str1,I,1)→Str2
+inString(Str0,Str2)→D
+If D:Then
+16*N+D-1→N
+K+1→K
+If K=2:Then
+S+N→S
+J+1→J
+# X = X xor N, one bit at a time
+0→Y
+For(Z,0,7)
+Y+2^Z*(int(X/2^Z)+int(N/2^Z)-2*int((int(X/2^Z)+int(N/2^Z))/2))→Y
+End
+Y→X
+0→N
+0→K
+End
+Else
+If Str2≠" " and Str2≠":" and Str2≠"," and not(P):I→P
+End
+End
+If P:Then
+Disp "NOT A HEX DIGIT: "+sub(Str1,P,1)
+End
+If K=1 and not(P):Then
+Disp "ODD NUMBER OF DIGITS"
+End
+If P or K=1:Goto H2
+S→V
+sub(Str0,V-16*int(V/16)+1,1)→Str4
+int(V/16)→V
+While V
+sub(Str0,V-16*int(V/16)+1,1)+Str4→Str4
+int(V/16)→V
+End
+J→V
+sub(Str0,V-10*int(V/10)+1,1)→Str5
+int(V/10)→V
+While V
+sub(Str0,V-10*int(V/10)+1,1)+Str5→Str5
+int(V/10)→V
+End
+S-256*int(S/256)→L
+sub(Str0,int(L/16)+1,1)+sub(Str0,L-16*int(L/16)+1,1)→Str3
+256-L-256*(L=0)→L
+sub(Str0,int(L/16)+1,1)+sub(Str0,L-16*int(L/16)+1,1)→Str6
+sub(Str0,int(X/16)+1,1)+sub(Str0,X-16*int(X/16)+1,1)→Str7
+Disp Str5+" BYTES, SUM = "+Str4,"SUM, LAST 2 DIGITS: "+Str3,"2'S COMP (INTEL/LRC): "+Str6,"XOR OF BYTES: "+Str7
+Goto H2
+#
+# ---------------------------------------------------------------- help
+Lbl K
+ClrHome
+Disp "DGH CHECKSUM = LAST 2 HEX","DIGITS OF THE SUM OF THE","ASCII CODES OF EVERY","CHARACTER: PROMPT ($ OR #)","+ ADDRESS + COMMAND + DATA","","EG $1RD:","24+31+52+44 = EB","SEND $1RDEB"
+Pause
+ClrHome
+Disp "KEYS:","ALPHA = ONE LETTER","2ND ALPHA = LETTER LOCK","* = THE MULTIPLY KEY","- = MINUS OR (-) KEY","SPACE = ALPHA 0","$ # ? ARE IN THE","FIRST-CHARACTER MENU"
+Pause
+Goto M
+#
+# ---------------------------------------------------------------- quit
+Lbl Q
+DelVar Str0
+DelVar Str1
+DelVar Str2
+DelVar Str3
+DelVar Str4
+DelVar Str5
+DelVar Str6
+DelVar Str7
+DelVar Str8
+DelVar Str9
+ClrHome
+Output(1,1," ")
