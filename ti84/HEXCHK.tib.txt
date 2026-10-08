@@ -5,17 +5,23 @@
 # calculator's own token names ("Disp ", "→", "Str1", "sub(", ...).
 # Lines starting with "#" are comments and are NOT sent to the calculator.
 #
-# Variables: Str0 = hex digits, Str8 = ASCII lookup (chars 32-126 in order,
-# minus the double quote, which a TI string can't hold), Str1-Str7/Str9 =
-# work strings, A-Z = numbers.  All Str vars are deleted again on QUIT.
+# Variables: Str0 = hex digits, Str8 = ASCII lookup (see below), Str1-Str7
+# and Str9 = work strings, A-Z = numbers.  All Str vars are deleted on QUIT.
 #
-# Rule kept everywhere: Goto / Menu( only at the top level, never from
-# inside an unfinished If-Then / For( / While block (that leaks memory and
-# ends in ERR:MEMORY on a real calculator).
+# Rules kept everywhere:
+# * Goto / Menu( only at the top level, never from inside an unfinished
+#   If-Then / For( / While block (that leaks memory and ends in ERR:MEMORY).
+# * Never work on an empty string. Before every Input the string gets the
+#   sentinel "@" (which can't be typed on the keypad), so a blank ENTER is
+#   caught whether the OS stores "" or keeps the old value.
 #
 ClrHome
 "0123456789ABCDEF"→Str0
-" !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~"→Str8
+# ASCII 32-126 in order, minus " (34, can't go in a TI string) and minus
+# a-z (97-122, can't be typed on a CE, and their 2-byte tokens share a
+# second byte with sin( cos( log( etc., which a user CAN type by mistake).
+# Position C -> code C+31, +1 after the missing ", +26 after the missing a-z.
+" !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`{|}~"→Str8
 #
 # ---------------------------------------------------------------- main menu
 Lbl M
@@ -37,10 +43,16 @@ Disp "DECIMAL TO HEX","EG 235  OR  200+35"
 End
 Disp "BLANK ENTRY = MENU"
 Lbl N2
+"@"→Str1
 Input ">",Str1
 If length(Str1)=0:Goto M
+If Str1="@":Goto M
+# T = total, N = number being typed (K = has digits), S = its sign.
+# + space , end a number; - and (-) flip the sign, so 10-⁻5 = 15.
+# N stops growing at 1E12 (flagged by O) so 90 F's can't hit ERR:OVERFLOW.
 0→T
 0→N
+0→K
 1→S
 0→P
 0→O
@@ -48,13 +60,16 @@ For(I,1,length(Str1))
 sub(Str1,I,1)→Str2
 inString(sub(Str0,1,B),Str2)→X
 If X:Then
-B*N+X-1→N
+If N<1ᴇ12:B*N+X-1→N
 If N≥1ᴇ12:1→O
+1→K
 Else
 If Str2="+" or Str2="-" or Str2="⁻" or Str2=" " or Str2=",":Then
 T+S*N→T
+If K:1→S
 0→N
-1-2*(Str2="-" or Str2="⁻")→S
+0→K
+If Str2="-" or Str2="⁻":⁻S→S
 Else
 If not(P):I→P
 End
@@ -63,7 +78,7 @@ End
 T+S*N→T
 If abs(T)≥1ᴇ12:1→O
 If P:Then
-Disp "NOT A DIGIT: "+sub(Str1,P,1)
+Disp "NOT A DIGIT:",sub(Str1,P,1)
 End
 If O and not(P):Then
 Disp "NUMBER TOO BIG"
@@ -107,37 +122,44 @@ Goto F
 Lbl V
 1→W
 Lbl F
-Menu("FIRST CHARACTER","$  COMMAND",F1,"#  COMMAND",F2,"*  RESPONSE",F3,"?  ERROR RESPONSE",F4,"NONE / TYPE IT ALL",F5,"BACK",M)
+Menu("FIRST CHARACTER","$  COMMAND (SHORT)",F1,"#  COMMAND (LONG)",F2,"*  REPLY",F3,"?  ERROR REPLY",F4,"NONE / TYPE IT ALL",F5,"BACK",M)
+# Str7 = the first character; it is also the Input prompt, so the user
+# sees e.g. $1RD while typing 1RD. ">" means "no first character".
 Lbl F1
-ClrHome
-Disp "TYPE ADDRESS+COMMAND","EG 1RD"
-Input "$",Str1
-"$"+Str1→Str1
-Goto F6
+"$"→Str7
+Goto F7
 Lbl F2
+"#"→Str7
+Lbl F7
 ClrHome
-Disp "TYPE ADDRESS+COMMAND","EG 1RD"
-Input "#",Str1
-"#"+Str1→Str1
+Disp "TYPE ADDRESS + COMMAND","(+ DATA IF ANY), EG 1RD"
 Goto F6
 Lbl F3
+"*"→Str7
 ClrHome
-Disp "TYPE THE REST","EG +00072.10"
-Input "*",Str1
-"*"+Str1→Str1
+Disp "TYPE THE REST OF THE REPLY","EG 1RD+00072.10"
 Goto F6
 Lbl F4
+"?"→Str7
 ClrHome
-Disp "TYPE THE REST"
-Input "?",Str1
-"?"+Str1→Str1
+Disp "TYPE THE REST OF THE REPLY","EG 1 BAD CHECKSUM"
 Goto F6
 Lbl F5
+">"→Str7
 ClrHome
 Disp "TYPE THE WHOLE STRING"
-Input ">",Str1
 Lbl F6
+If W=1:Disp "THEN ITS 2 CHECKSUM CHARS"
+"@"→Str1
+Input Str7,Str1
 If length(Str1)=0:Goto F
+If Str1="@":Goto F
+If Str7≠">":Str7+Str1→Str1
+If length(Str1)>150:Then
+Disp "TOO LONG (MAX 150)"
+Pause
+End
+If length(Str1)>150:Goto F
 If W=1 and length(Str1)<3:Then
 Disp "TOO SHORT - TYPE THE","STRING AND ITS 2-CHARACTER","CHECKSUM"
 Pause
@@ -157,12 +179,13 @@ For(I,1,length(Str1))
 sub(Str1,I,1)→Str2
 If Str2="⁻":"-"→Str2
 inString(Str8,Str2)→C
-If C:C+31+(C>2)→C
+If C:C+31+(C>2)+26*(C>64)→C
 If not(C) and not(P):I→P
 S+C→S
 If C:Then
 sub(Str0,int(C/16)+1,1)+sub(Str0,C-16*int(C/16)+1,1)→Str3
 Else
+"?"→Str2
 "??"→Str3
 End
 S→V
@@ -181,16 +204,21 @@ Disp "CHR  HEX  SUM"
 0→R
 End
 End
-If P:Then
-Disp "NOT AN ASCII CHARACTER:",sub(Str1,P,1)
-Pause
-End
-If P:Goto F
-# a full last page would push its top rows off the 10-line screen
-If R>5:Then
+# E = lines still to show under the table: the error (2), or SUM and
+# CHECKSUM plus 2 verify lines or "SEND THIS:" and its 26-column pieces.
+# If they don't fit on the 10-line screen, wait and start a new screen.
+If P:2→E
+If not(P) and W=1:4→E
+If not(P) and W=0:3+int((length(Str1)+27)/26)→E
+If R+E>9:Then
 Pause
 ClrHome
 End
+If P:Then
+Disp "CAN'T USE THIS CHARACTER:",sub(Str1,P,1)
+Pause
+End
+If P:Goto F
 # Str4 = sum in hex, Str5 = sum in decimal, Str3 = checksum (last 2 hex)
 S→V
 sub(Str0,V-10*int(V/10)+1,1)→Str5
@@ -210,9 +238,9 @@ Disp sub(Str5,I,min(26,length(Str5)-I+1))
 End
 Else
 If Str9=Str3:Then
-Disp "RECEIVED "+Str9+" = MATCH, OK"
+Disp "RECEIVED "+Str3,"MATCH - CHECKSUM OK"
 Else
-Disp "RECEIVED "+Str9+" = WRONG!"
+Disp "WRONG! RECEIVED:",Str9
 End
 End
 Pause
@@ -224,8 +252,10 @@ Lbl H
 ClrHome
 Disp "HEX BYTES CHECKSUM","TYPE BYTES (2 DIGITS EACH)","EG 0300300002337A","SPACES ARE IGNORED","BLANK ENTRY = MENU"
 Lbl H2
+"@"→Str1
 Input "BYTES:",Str1
 If length(Str1)=0:Goto M
+If Str1="@":Goto M
 0→S
 0→X
 0→N
@@ -255,7 +285,7 @@ If Str2≠" " and Str2≠":" and Str2≠"," and not(P):I→P
 End
 End
 If P:Then
-Disp "NOT A HEX DIGIT: "+sub(Str1,P,1)
+Disp "NOT A HEX DIGIT:",sub(Str1,P,1)
 End
 If K=1 and not(P):Then
 Disp "ODD NUMBER OF DIGITS"
@@ -286,10 +316,13 @@ Goto H2
 # ---------------------------------------------------------------- help
 Lbl K
 ClrHome
-Disp "DGH CHECKSUM = LAST 2 HEX","DIGITS OF THE SUM OF THE","ASCII CODES OF EVERY","CHARACTER: PROMPT ($ OR #)","+ ADDRESS + COMMAND + DATA","","EG $1RD:","24+31+52+44 = EB","SEND $1RDEB"
+Disp "DGH CHECKSUM = LAST 2 HEX","DIGITS OF THE SUM OF THE","ASCII CODES OF EVERY","CHARACTER: PROMPT ($ OR #)","+ ADDRESS + COMMAND + DATA","(NOT THE CARRIAGE RETURN)","EG $1RD:","24+31+52+44 = EB","SEND $1RDEB"
 Pause
 ClrHome
-Disp "KEYS:","ALPHA = ONE LETTER","2ND ALPHA = LETTER LOCK","* = THE MULTIPLY KEY","- = MINUS OR (-) KEY","SPACE = ALPHA 0","$ # ? ARE IN THE","FIRST-CHARACTER MENU"
+Disp "$ GETS A SHORT REPLY","WITH NO CHECKSUM.","# GETS A LONG REPLY THAT","ECHOES THE COMMAND AND","ENDS IN A CHECKSUM, EG","#1RD -> *1RD+00072.10A4","CHECK IT: VERIFY, THEN *","DON'T PUT SPACES IN","CHECKSUMMED COMMANDS"
+Pause
+ClrHome
+Disp "KEYS:","ALPHA = ONE LETTER","2ND ALPHA = LETTER LOCK","* = THE MULTIPLY KEY","- = MINUS OR (-) KEY","$ # ARE IN THE","FIRST-CHARACTER MENU","BLANK ENTRY = GO BACK"
 Pause
 Goto M
 #
@@ -306,4 +339,5 @@ DelVar Str7
 DelVar Str8
 DelVar Str9
 ClrHome
-Output(1,1," ")
+# a value on the last line replaces the "Done" message
+"

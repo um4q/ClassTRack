@@ -22,15 +22,16 @@ Besides running the program it enforces the rules a real calculator punishes:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from decimal import Decimal, Context, ROUND_HALF_UP, ROUND_FLOOR, ROUND_DOWN
+from decimal import Decimal, Context, Overflow, ROUND_HALF_UP, ROUND_FLOOR, ROUND_DOWN
 
-from build import display_names
+from build import STRING_CHARS, token_list
 
 SCREEN_COLS = 26
 SCREEN_ROWS = 10
 MENU_MAX_ITEMS = 7
 MENU_ITEM_COLS = SCREEN_COLS - 2  # "1:" prefix
-CTX = Context(prec=14, rounding=ROUND_HALF_UP)
+# 14 significant digits, and |x| < 1E100 like the calculator (else ERR:OVERFLOW)
+CTX = Context(prec=14, rounding=ROUND_HALF_UP, Emax=99, Emin=-99)
 
 
 
@@ -51,13 +52,22 @@ class OutOfInput(Exception):
 
 
 def program_tokens(data: bytes) -> list[str]:
-    return display_names(data)
+    """Token names, kept distinct by bytes: a token that merely *looks* like
+    one of the program's string characters (e.g. the statistics variable "n"
+    vs the letter n) gets its hex code appended so it never compares equal."""
+    out = []
+    for bits, name in token_list(data):
+        if name in STRING_CHARS and STRING_CHARS[name] != bits:
+            name = f"{name}<{bits.hex()}>"
+        out.append(name)
+    return out
 
 
-def typed(text: str) -> tuple[str, ...]:
-    """What a user typing `text` at an Input prompt produces: one token per
-    character ("⁻" is the (-) key, "-" the minus key, "*" the times key)."""
-    return tuple(text)
+def typed(keys) -> tuple[str, ...]:
+    """What a user typing `keys` at an Input prompt produces. A str is one
+    token per character ("⁻" is the (-) key, "-" the minus key, "*" the times
+    key); a list/tuple gives the tokens explicitly, e.g. ["1", "sin("]."""
+    return tuple(keys)
 
 
 def text(s: tuple[str, ...]) -> str:
@@ -113,7 +123,8 @@ class Screen:
 class Run:
     events: list[Event] = field(default_factory=list)
     finished: bool = False
-    last_was_output: bool = False
+    leftover_keys: list = field(default_factory=list)
+    ends_with_value: bool = False  # last statement was a bare value: no "Done"
 
     @property
     def lines(self) -> list[str]:
@@ -135,7 +146,14 @@ STATEMENT_OPENERS = ("For(", "While ", "Repeat ")
 
 
 class Interpreter:
-    def __init__(self, data: bytes, keys: list, *, max_steps: int = 2_000_000):
+    def __init__(self, data: bytes, keys: list, *, blank_input: str = "empty",
+                 max_steps: int = 2_000_000):
+        # What Input does when the user presses ENTER on a blank line isn't
+        # documented for the CE: it may store "" ("empty") or leave the
+        # variable as it was ("keep"). HEXCHK must work either way.
+        if blank_input not in ("empty", "keep"):
+            raise ValueError(blank_input)
+        self.blank_input = blank_input
         self.stmts = self._split(program_tokens(data))
         self.labels: dict[str, int] = {}
         for i, st in enumerate(self.stmts):
@@ -184,11 +202,15 @@ class Interpreter:
                 steps += 1
                 if steps > self.max_steps:
                     raise RuntimeError("step limit hit (infinite loop?)")
-                pc = self._step(pc)
+                try:
+                    pc = self._step(pc)
+                except Overflow:
+                    raise TIError("OVERFLOW") from None
             self.screen.wait()
             self.run.finished = True
         except OutOfInput:
             pass
+        self.run.leftover_keys = list(self.keys)
         return self.run
 
     def _match_end(self, start: int, stop_at_else: bool) -> int:
@@ -217,7 +239,7 @@ class Interpreter:
 
     def _step(self, pc: int) -> int:
         st = self.stmts[pc]
-        self.run.last_was_output = False
+        self.run.ends_with_value = False
         if not st:
             return pc + 1
         head = st[0]
@@ -328,10 +350,11 @@ class Interpreter:
             value = self._next_key("input")
             if not var.startswith("Str"):
                 raise RuleViolation("HEXCHK should only Input into strings")
-            self.vars[var] = typed(value)
+            if value or self.blank_input == "empty":
+                self.vars[var] = typed(value)
             self.screen.wait()
-            self.screen.add(text(prompt) + value, read=True)
-            self.run.events.append(Event("input", (text(prompt), value)))
+            self.screen.add(text(prompt) + text(typed(value)), read=True)
+            self.run.events.append(Event("input", (text(prompt), text(typed(value)))))
             return pc + 1
 
         if head == "Disp ":
@@ -366,7 +389,6 @@ class Interpreter:
             if not (1 <= row <= 10 and 1 <= col <= SCREEN_COLS):
                 raise TIError("DOMAIN", "Output( position")
             self.run.events.append(Event("output", (int(row), int(col), text(value))))
-            self.run.last_was_output = True
             return pc + 1
 
         if head == "DelVar ":
@@ -393,6 +415,7 @@ class Interpreter:
             return pc + 1
 
         self.vars["Ans"] = self.eval(st)
+        self.run.ends_with_value = True
         return pc + 1
 
     # -------------------------------------------------------- expressions
@@ -649,10 +672,10 @@ class _Parser:
         raise TIError("SYNTAX", name)
 
 
-def run_program(data: bytes, keys: list) -> Run:
+def run_program(data: bytes, keys: list, *, blank_input: str = "empty") -> Run:
     """Run token bytes with scripted keys: ("menu", n) picks item n,
     ("input", "text") types text then ENTER. Pauses need no key."""
-    return Interpreter(data, keys).execute()
+    return Interpreter(data, keys, blank_input=blank_input).execute()
 
 
 def static_check(data: bytes) -> list[str]:

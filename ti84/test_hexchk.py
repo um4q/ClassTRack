@@ -56,16 +56,18 @@ def ref_bytes(hexstr: str) -> dict:
 
 
 def run(*keys):
+    """Run the program with scripted keys; it must use every key and then
+    finish (every script here ends by choosing QUIT)."""
     result = sim.run_program(DATA, list(keys))
+    assert result.leftover_keys == [], f"unused keys: {result.leftover_keys}"
+    assert result.finished, "program stopped early or is still waiting"
     return result
 
 
 def checksum_lines(prompt: str, typed: str, verify: bool = False) -> list[str]:
     keys = [("menu", VERIFY if verify else DGH), ("menu", PROMPTS[prompt]), ("input", typed),
             ("menu", BACK), ("menu", QUIT)]
-    r = run(*keys)
-    assert r.finished
-    return r.lines
+    return run(*keys).lines
 
 
 # ------------------------------------------------------------ build / file
@@ -104,13 +106,17 @@ def test_static_rules():
     assert sim.static_check(DATA) == []
 
 
-def test_lookup_string_is_ascii_32_to_126_without_quote():
+def test_lookup_string_is_ascii_32_to_126_without_quote_or_lowercase():
     tokens = build.display_names(DATA)
     start = tokens.index('"', tokens.index("0") + 20)  # second string literal
     end = tokens.index('"', start + 1)
     lut = "".join(tokens[start + 1:end])
-    expected = "".join(chr(c) for c in range(32, 127) if c != 34)
+    expected = "".join(chr(c) for c in range(32, 127) if c != 34 and not chr(c).islower())
     assert lut == expected
+    # every token in it is 1 byte except the symbols that only exist as
+    # 2-byte tokens; none of them is a lowercase letter
+    two_byte = {c for c in lut if len(build.STRING_CHARS[c]) == 2}
+    assert two_byte == set("#$%&;@\\_`|~")
 
 
 # --------------------------------------------------------------- hex add
@@ -124,6 +130,12 @@ def test_lookup_string_is_ascii_32_to_126_without_quote():
     ("ABCDEF+123456", 0xABCDEF + 0x123456),
     ("FFFFFFFFF", 0xFFFFFFFFF),
     ("-FF", -0xFF),
+    ("24,31,52,44", 0xEB),
+    ("10-⁻5", 0x15),          # minus then (-) key: 10 - (-5)
+    ("5--3", 8),
+    ("10-5+3", 0xE),
+    ("3-0-5", -2),
+    ("⁻⁻7", 7),
 ])
 def test_hex_add(expr, value):
     r = run(("menu", HEX_ADD), ("input", expr), ("input", ""), ("menu", QUIT))
@@ -151,7 +163,7 @@ def test_hex_add_random():
 def test_hex_add_errors_then_keeps_going():
     r = run(("menu", HEX_ADD), ("input", "2G"), ("input", "FFFFFFFFFFF"),
             ("input", "1+1"), ("input", ""), ("menu", QUIT))
-    assert r.lines[4:] == ["NOT A DIGIT: G", "NUMBER TOO BIG", "= 2 HEX", "= 2 DEC",
+    assert r.lines[4:] == ["NOT A DIGIT:", "G", "NUMBER TOO BIG", "= 2 HEX", "= 2 DEC",
                            "LAST 2 HEX DIGITS: 02"]
     assert r.finished
 
@@ -162,7 +174,7 @@ def test_dec_to_hex():
     lines = r.lines[3:]
     assert lines[:3] == ["= EB HEX", "= 235 DEC", "LAST 2 HEX DIGITS: EB"]
     assert lines[3:6] == ["= EB HEX", "= 235 DEC", "LAST 2 HEX DIGITS: EB"]
-    assert lines[6] == "NOT A DIGIT: A"
+    assert lines[6:8] == ["NOT A DIGIT:", "A"]
 
 
 # ------------------------------------------------------------ DGH checksum
@@ -221,31 +233,71 @@ def test_negative_key_counts_as_minus():
 
 def test_verify_match_and_mismatch():
     ok = checksum_lines("$", "1RDEB", verify=True)
-    assert "RECEIVED EB = MATCH, OK" in ok
+    assert ok[-2:] == ["RECEIVED EB", "MATCH - CHECKSUM OK"]
     bad = checksum_lines("$", "1RDEA", verify=True)
-    assert "RECEIVED EA = WRONG!" in bad
+    assert bad[-3:] == ["CHECKSUM = EB", "WRONG! RECEIVED:", "EA"]
     resp = "+00072.10"
     good = checksum_lines("*", resp + ref_checksum("*" + resp), verify=True)
-    assert f"RECEIVED {ref_checksum('*' + resp)} = MATCH, OK" in good
+    assert good[-2:] == [f"RECEIVED {ref_checksum('*' + resp)}", "MATCH - CHECKSUM OK"]
 
 
 def test_verify_too_short():
     r = run(("menu", VERIFY), ("menu", 5), ("input", "AB"), ("menu", BACK), ("menu", QUIT))
-    assert r.lines[1:4] == ["TOO SHORT - TYPE THE", "STRING AND ITS 2-CHARACTER", "CHECKSUM"]
+    assert r.lines[2:5] == ["TOO SHORT - TYPE THE", "STRING AND ITS 2-CHARACTER", "CHECKSUM"]
     assert r.finished
 
 
 def test_non_ascii_character_is_reported():
     # "θ" can be typed (ALPHA 3) but isn't an ASCII character.
     r = run(("menu", DGH), ("menu", 1), ("input", "1Rθ"), ("menu", BACK), ("menu", QUIT))
-    assert "NOT AN ASCII CHARACTER:" in r.lines
+    assert "CAN'T USE THIS CHARACTER:" in r.lines
     assert not any(line.startswith("CHECKSUM") for line in r.lines)
     assert r.finished
 
 
-def test_blank_entry_goes_back():
-    r = run(("menu", DGH), ("menu", 5), ("input", ""), ("menu", BACK), ("menu", QUIT))
+def test_lowercase_is_not_accepted():
+    # can't be typed on a stock CE; make sure it's rejected, not mis-summed
+    r = run(("menu", DGH), ("menu", 1), ("input", "1rd"), ("menu", BACK), ("menu", QUIT))
+    assert "CAN'T USE THIS CHARACTER:" in r.lines
+
+
+# Every example printed in the DGH manuals (D1000, D1700, D5000, D3000M).
+@pytest.mark.parametrize("prompt, typed, checksum", [
+    ("$", "1RD", "EB"),
+    ("#", "1RD", "EA"),
+    ("#", "1DOFF", "73"),
+    ("#", "1DOFF00", "D3"),
+    ("$", "1RZ", "01"),            # sum 101: must stay 2 characters
+])
+def test_dgh_manual_commands(prompt, typed, checksum):
+    lines = checksum_lines(prompt, typed)
+    assert f"CHECKSUM = {checksum}" in lines
+    assert prompt + typed + checksum in lines
+
+
+@pytest.mark.parametrize("reply", ["1RD+00072.10A4", "1DI8000B0"])
+def test_dgh_manual_long_form_replies_verify(reply):
+    lines = checksum_lines("*", reply, verify=True)
+    assert lines[-2:] == [f"RECEIVED {reply[-2:]}", "MATCH - CHECKSUM OK"]
+
+
+@pytest.mark.parametrize("blank", ["empty", "keep"])
+@pytest.mark.parametrize("keys", [
+    [("menu", HEX_ADD), ("input", "1+1"), ("input", "")],
+    [("menu", HEX_ADD), ("input", "")],
+    [("menu", DEC_TO_HEX), ("input", "")],
+    [("menu", HEX_BYTES), ("input", "0102"), ("input", "")],
+    [("menu", DGH), ("menu", 1), ("input", ""), ("menu", BACK)],
+    [("menu", DGH), ("menu", 1), ("input", "1RD"), ("menu", 1), ("input", ""), ("menu", BACK)],
+    [("menu", VERIFY), ("menu", 3), ("input", ""), ("menu", BACK)],
+    [("menu", DGH), ("menu", 5), ("input", ""), ("menu", BACK)],
+])
+def test_blank_entry_goes_back(keys, blank):
+    """Whatever the OS does with a blank ENTER, it goes straight back to a menu."""
+    r = sim.run_program(DATA, keys + [("menu", QUIT)], blank_input=blank)
     assert r.finished
+    blank_at = max(i for i, e in enumerate(r.events) if e.kind == "input" and e.value[1] == "")
+    assert r.events[blank_at + 1].kind == "menu", r.events[blank_at + 1:]
 
 
 # -------------------------------------------------------- hex bytes mode
@@ -273,7 +325,7 @@ def test_hex_bytes_known_answers():
     assert "2'S COMP (INTEL/LRC): 1E" in r.lines      # Intel HEX example record
     assert "ODD NUMBER OF DIGITS" in r.lines
     assert "2'S COMP (INTEL/LRC): E8" in r.lines      # 01+03+00+0A+00+0A = 18 -> E8
-    assert "NOT A HEX DIGIT: G" in r.lines
+    assert r.lines[r.lines.index("NOT A HEX DIGIT:") + 1] == "G"
 
 
 def test_hex_bytes_random_xor_and_sum():
@@ -291,7 +343,7 @@ def test_hex_bytes_random_xor_and_sum():
 def test_help_and_quit_leave_a_clean_screen():
     r = run(("menu", HELP), ("menu", QUIT))
     assert r.finished
-    assert r.last_was_output  # Output( last, so the calculator doesn't print "Done"
+    assert r.ends_with_value  # a bare value last, so the calculator doesn't print "Done"
     assert "SEND $1RDEB" in r.lines
 
 
@@ -300,3 +352,108 @@ def test_quit_deletes_work_strings():
                                     ("menu", BACK), ("menu", QUIT)])
     interp.execute()
     assert not any(k.startswith("Str") for k in interp.vars)
+
+
+# ------------------------------------------------- review follow-ups
+def test_signs_reset_after_each_number():
+    r = run(("menu", HEX_ADD), ("input", "1-1 1"), ("input", ""), ("menu", QUIT))
+    assert r.lines[4] == "= 1 HEX"  # 1 - 1 + 1
+
+
+@pytest.mark.parametrize("mode, digits", [(HEX_ADD, "F" * 90), (DEC_TO_HEX, "9" * 110),
+                                          (HEX_ADD, "1+" + "F" * 120)])
+def test_huge_numbers_say_too_big_instead_of_overflowing(mode, digits):
+    r = run(("menu", mode), ("input", digits), ("input", ""), ("menu", QUIT))
+    assert "NUMBER TOO BIG" in r.lines
+
+
+def test_simulator_enforces_the_1e100_limit():
+    data = build.tokenize("9ᴇ99→A\n10*A→A")
+    with pytest.raises(sim.TIError, match="OVERFLOW"):
+        sim.run_program(data, [])
+
+
+@pytest.mark.parametrize("mode, keys, expect", [
+    (HEX_ADD, ["1", "normalcdf("], ["NOT A DIGIT:", "normalcdf("]),
+    (DEC_TO_HEX, ["sin(", "2"], ["NOT A DIGIT:", "sin("]),
+    (HEX_BYTES, ["1", "randIntNoRep("], ["NOT A HEX DIGIT:", "randIntNoRep("]),
+])
+def test_long_tokens_are_reported_on_their_own_line(mode, keys, expect):
+    """E.g. pressing SIN (sin() instead of ALPHA SIN (E)."""
+    r = run(("menu", mode), ("input", keys), ("input", ""), ("menu", QUIT))
+    i = r.lines.index(expect[0])
+    assert r.lines[i:i + 2] == expect
+
+
+def test_long_token_in_a_dgh_command():
+    r = run(("menu", DGH), ("menu", 1), ("input", ["1", "R", "sin("]), ("menu", BACK), ("menu", QUIT))
+    assert " ?   ??   " in [line[:10] for line in r.lines]
+    i = r.lines.index("CAN'T USE THIS CHARACTER:")
+    assert r.lines[i + 1] == "sin("
+
+
+def test_verify_with_long_tokens_as_the_checksum():
+    r = run(("menu", VERIFY), ("menu", 1), ("input", ["1", "R", "D", "sin(", "cos("]),
+            ("menu", BACK), ("menu", QUIT))
+    assert r.lines[-2:] == ["WRONG! RECEIVED:", "sin(cos("]
+
+
+@pytest.mark.parametrize("length", range(1, 71))
+@pytest.mark.parametrize("verify", [False, True])
+def test_every_length_fits_the_screen(length, verify):
+    """sim raises RuleViolation if any line scrolls off before it can be read."""
+    rnd = random.Random(length)
+    typed = "".join(rnd.choice(TYPABLE.replace(" ", "")) for _ in range(length))
+    full = "$" + typed
+    if verify:
+        lines = checksum_lines("$", typed + ref_checksum(full), verify=True)
+        assert lines[-1] == "MATCH - CHECKSUM OK"
+    else:
+        lines = checksum_lines("$", typed)
+        assert "".join(lines[lines.index("SEND THIS:") + 1:]) == full + ref_checksum(full)
+
+
+@pytest.mark.parametrize("typed", ["1RDθ123", "1RDθ1234567890123", "θ"])
+def test_bad_character_on_a_full_page(typed):
+    lines = checksum_lines("$", typed)
+    assert "CAN'T USE THIS CHARACTER:" in lines
+
+
+def test_input_length_limit():
+    r = run(("menu", DGH), ("menu", 1), ("input", "1" * 150), ("menu", BACK), ("menu", QUIT))
+    kinds = [e.kind for e in r.events]
+    i = next(k for k, e in enumerate(r.events) if e.value == "TOO LONG (MAX 150)")
+    assert kinds[i + 1:i + 3] == ["pause", "menu"]  # straight back, no checksum
+    ok = checksum_lines("$", "1" * 149)
+    assert f"CHECKSUM = {ref_checksum('$' + '1' * 149)}" in ok
+
+
+@pytest.mark.parametrize("prompt, typed", [("#", "1RDEA"), ("?", "1 BAD CHECKSUM"), ("", "$1RDEB")])
+def test_verify_through_other_first_characters(prompt, typed):
+    if prompt == "?":
+        typed += ref_checksum("?" + typed)
+    lines = checksum_lines(prompt, typed, verify=True)
+    assert lines[-1] == "MATCH - CHECKSUM OK"
+
+
+def test_verify_reports_bad_character():
+    lines = checksum_lines("$", "1θDEB", verify=True)
+    assert "CAN'T USE THIS CHARACTER:" in lines
+
+
+def test_only_first_bad_character_is_reported():
+    r = run(("menu", HEX_ADD), ("input", "GH"), ("input", ""), ("menu", QUIT))
+    assert r.lines[4:6] == ["NOT A DIGIT:", "G"]
+
+
+def test_hex_bytes_commas_and_colon_are_ignored():
+    r = run(("menu", HEX_BYTES), ("input", ":01,03,00 0A"), ("input", ""), ("menu", QUIT))
+    assert r.lines[5] == "4 BYTES, SUM = E"
+
+
+def test_lookalike_tokens_are_not_ascii():
+    """VARS > Statistics "n" looks like a letter but isn't one."""
+    data = build.tokenize('"N"→Str1')
+    assert sim.program_tokens(data)[1] == "N"
+    lookalike = sim.program_tokens(bytes.fromhex("6202"))  # statistics n
+    assert lookalike == ["n<6202>"]

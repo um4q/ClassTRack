@@ -29,12 +29,12 @@ The main menu:
 
 | # | Item | What it does |
 |---|------|--------------|
-| 1 | HEX ADD/SUBTRACT | Type `24+31+52+44` → `= EB HEX`, `= 235 DEC`, `LAST 2 HEX DIGITS: EB`. `-` works too (`10-20` → `-10`). Spaces or commas also mean "add". Leave it blank and press `enter` to go back. |
+| 1 | HEX ADD/SUBTRACT | Type `24+31+52+44` → `= EB HEX`, `= 235 DEC`, `LAST 2 HEX DIGITS: EB`. `-` works too (`10-20` → `-10`), and signs combine (`10-⁻5` → `15`). Spaces or commas also mean "add". Up to 12 digits per number. Leave it blank and press `enter` to go back. |
 | 2 | DEC TO HEX | Type a decimal number (or a sum like `200+35`) → hex and decimal. |
-| 3 | DGH CHECKSUM | Pick the first character (`$`, `#`, `*`, `?`, or none), then type the rest. For example, choose `$` and type `1RD`. It shows each character's ASCII code with a running total, then `CHECKSUM = EB` and `SEND THIS: $1RDEB`. |
-| 4 | VERIFY A CHECKSUM | Same, but type the whole string **including** its last 2 checksum characters (e.g. `$`, then `1RDEB`). It says `MATCH, OK` or `WRONG!`. |
+| 3 | DGH CHECKSUM | Pick the first character (`$`, `#`, `*`, `?`, or none), then type the rest. For example, choose `$` and type `1RD`; the screen shows `$1RD` as you type. It shows each character's ASCII code with a running total, then `CHECKSUM = EB` and `SEND THIS: $1RDEB`. |
+| 4 | VERIFY A CHECKSUM | Same, but type the whole string **including** its last 2 checksum characters. Example: a long-form reply `*1RD+00072.10A4`: choose `*`, type `1RD+00072.10A4`. It says `MATCH - CHECKSUM OK`, or `WRONG! RECEIVED:` and what you typed. |
 | 5 | HEX BYTES CHECKSUM | Type hex bytes (e.g. `0300300002337A`). It shows the byte count, the sum, the last 2 hex digits of the sum, the two's complement (Intel HEX checksum / Modbus LRC) and the XOR of the bytes. Spaces and `:` are ignored. To check a whole Intel HEX line, type it with its checksum: the sum's last 2 digits are `00` when the line is good. |
-| 6 | HELP | The checksum rule and key tips, on the calculator. |
+| 6 | HELP | The checksum rule, `$` vs `#`, and key tips, on the calculator. |
 | 7 | QUIT | Exits and deletes the string variables it used (Str0–Str9). |
 
 ### How the DGH checksum works
@@ -50,7 +50,28 @@ $1RD   →   $ = 24, 1 = 31, R = 52, D = 44
 ```
 
 If the sum goes past `FF` (e.g. `2D4`), keep only the last two digits (`D4`).
-The program does this for you and shows the full sum too.
+The checksum is always 2 characters: a sum of `101` gives `01`. The program
+does this for you and shows the full sum too.
+
+These all come from the DGH manuals (D1000, D1700, D5000, D3000M), and the
+program reproduces every one:
+
+| Sent / received | Checksum |
+|---|---|
+| `$1RD` → `$1RDEB` | `EB` |
+| `#1RD` → `#1RDEA` | `EA` (`#` is 23, one less than `$` = 24) |
+| `#1DOFF` → `#1DOFF73` | `73` (sum `173`) |
+| reply `*1RD+00072.10A4` | `A4`, counting the `*` |
+| reply `*1DI8000B0` | `B0` |
+
+- `$` gets a short reply with no checksum (`*+00072.10`).
+- `#` gets a long reply that echoes the address and command and ends in a
+  checksum (`*1RD+00072.10A4`). To check it, use **VERIFY**, pick `*`, and
+  type the rest.
+- A module that gets a wrong checksum answers `?1 BAD CHECKSUM` and doesn't
+  run the command. The checksum is optional: a command without one still works.
+- Commands are uppercase. Leave spaces out of checksummed commands (the
+  module skips spaces, and the manuals don't say whether they count).
 
 ### Typing on the calculator
 
@@ -60,8 +81,11 @@ The program does this for you and shows the full sum too.
 - `*` is the `×` key. `-` is the `−` key (the `(−)` key works too). Space is
   `alpha` `0`. `:` is `alpha` `.` and `?` is `alpha` `(−)`.
 - `$` and `#` aren't on the keypad, which is why you pick the first character
-  from a menu.
-- Pressing `enter` on a blank line goes back a menu.
+  from a menu. The double quote `"` (`alpha` `+`) can't be checksummed: the
+  program says `CAN'T USE THIS CHARACTER`. Strings can be up to 150 characters. Lowercase letters can't be typed on a CE either, so the
+  program only accepts uppercase.
+- Pressing `enter` on a blank line goes back a menu. (If your calculator
+  ever just asks again instead, press `2nd` `quit` to leave the program.)
 - Press `on` at any time to break out of the program (choose **Quit**).
 
 ## For developers

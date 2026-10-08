@@ -161,11 +161,19 @@ def tokenize(text: str) -> bytes:
 DISPLAY_FIXUPS = {"\\'": "'"}
 
 
+def token_list(data: bytes) -> list[tuple[bytes, str]]:
+    """Token bytes -> (bytes, display name) for each token."""
+    tokens, _ = decode(data, tokens=TI_84PCE.tokens)
+    out = []
+    for t in tokens:
+        name = t.langs["en"].display
+        out.append((t.bits, DISPLAY_FIXUPS.get(name, name)))
+    return out
+
+
 def display_names(data: bytes) -> list[str]:
     """Token bytes -> the calculator's display name for each token."""
-    tokens, _ = decode(data, tokens=TI_84PCE.tokens)
-    names = [t.langs["en"].display for t in tokens]
-    return [DISPLAY_FIXUPS.get(n, n) for n in names]
+    return [name for _, name in token_list(data)]
 
 
 def detokenize(data: bytes) -> str:
