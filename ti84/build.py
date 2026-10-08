@@ -31,11 +31,13 @@ from pathlib import Path
 from tivars.models import TI_84PCE
 from tivars.tokenizer.decoder import decode
 from tivars.types import TIProgram
+from tivars.var import TIHeader
 
 HERE = Path(__file__).resolve().parent
 SOURCE = HERE / "HEXCHK.tib.txt"
 OUTPUT = HERE / "HEXCHK.8xp"
 PROGRAM_NAME = "HEXCHK"
+FILE_COMMENT = "HEXCHK: hex add + DGH checksums (TI-84+CE)"  # max 42 chars
 
 QUOTE = b"\x2a"
 STORE = b"\x04"
@@ -186,6 +188,12 @@ def build_program(text: str) -> TIProgram:
     return program
 
 
+def export_bytes(program: TIProgram) -> bytes:
+    """The complete .8xp file."""
+    header = TIHeader(model=TI_84PCE, comment=FILE_COMMENT)
+    return program.export(name=PROGRAM_NAME, header=header, model=TI_84PCE).bytes()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--check", action="store_true",
@@ -204,7 +212,7 @@ def main() -> int:
                 raise SystemExit(f"round-trip mismatch on code line {n}:\n  {a!r}\n  {b!r}")
         raise SystemExit("round-trip mismatch (line count)")
 
-    blob = program.export(name=PROGRAM_NAME, model=TI_84PCE).bytes()
+    blob = export_bytes(program)
     if args.check:
         if not OUTPUT.exists() or OUTPUT.read_bytes() != blob:
             print(f"{OUTPUT.name} is out of date - run: python ti84/build.py", file=sys.stderr)

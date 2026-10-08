@@ -73,7 +73,7 @@ def checksum_lines(prompt: str, typed: str, verify: bool = False) -> list[str]:
 # ------------------------------------------------------------ build / file
 def test_source_round_trips_and_file_is_current():
     program = build.build_program(build.SOURCE.read_text(encoding="utf-8"))
-    blob = program.export(name=build.PROGRAM_NAME, model=build.TI_84PCE).bytes()
+    blob = build.export_bytes(program)
     assert build.OUTPUT.read_bytes() == blob, "HEXCHK.8xp is stale - run python ti84/build.py"
 
 
@@ -84,6 +84,7 @@ def test_8xp_container_is_valid():
     assert raw[:8] == b"**TI83F*"
     assert raw[8:10] == b"\x1a\x0a"
     assert raw[10] in (0x00, 0x13)  # 0x13 = TI-84 Plus CE product id
+    assert raw[11:53].rstrip(b"\x00") == build.FILE_COMMENT.encode("ascii")
     body_len = struct.unpack_from("<H", raw, 53)[0]
     body = raw[55:55 + body_len]
     assert len(raw) == 55 + body_len + 2
@@ -117,6 +118,16 @@ def test_lookup_string_is_ascii_32_to_126_without_quote_or_lowercase():
     # 2-byte tokens; none of them is a lowercase letter
     two_byte = {c for c in lut if len(build.STRING_CHARS[c]) == 2}
     assert two_byte == set("#$%&;@\\_`|~")
+    # And byte for byte, written out independently of build.STRING_CHARS:
+    # some glyphs have two tokens ("`" is BB9B and BBD5, "." is 3A and EF73)
+    # and only these are the plain characters.
+    expected_hex = ("29 2D BBD2 BBD3 BBDA BBD4 AE 10 11 82 70 2B 71 3A 83 "
+                    + " ".join(f"{c:02X}" for c in range(0x30, 0x3A))
+                    + " 3E BBD6 6B 6A 6C AF BBD1 "
+                    + " ".join(f"{c:02X}" for c in range(0x41, 0x5B))
+                    + " 06 BBD7 07 F0 BBD9 BBD5 08 BBD8 09 BBCF")
+    lut_bits = [bits for bits, _ in build.token_list(DATA)[start + 1:end]]
+    assert lut_bits == [bytes.fromhex(h) for h in expected_hex.split()]
 
 
 # --------------------------------------------------------------- hex add
