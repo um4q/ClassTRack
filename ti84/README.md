@@ -12,16 +12,16 @@ the CE Python edition). It does:
 
 ## Putting it on the calculator
 
-1. Install **TI Connect CE** (free from education.ti.com) and plug the
+1. Download `ti84/HEXCHK.8xp` from this folder. On GitHub, open the file and
+   use **Download raw file**.
+2. Install **TI Connect CE** (free from education.ti.com) and plug the
    calculator into the computer with its USB cable. Turn the calculator on.
-2. In TI Connect CE, open **Calculator Explorer** (the second icon on the left).
-3. **Drag `HEXCHK.8xp` onto the calculator** in that window and confirm
+3. In TI Connect CE, open **Calculator Explorer** (the second icon on the left).
+4. **Drag `HEXCHK.8xp` onto the calculator** in that window and confirm
    **Send**. (Or: *Actions → Send to Calculators*.)
-4. On the calculator press `prgm`, choose **HEXCHK**, then press `enter`
-   twice.
-
-Get the file from this folder: `ti84/HEXCHK.8xp`. On GitHub, open the file and
-use **Download raw file**.
+5. On the calculator press `prgm`, then the number next to **HEXCHK** (or
+   arrow to it and press `enter`). The home screen shows `prgmHEXCHK`; press
+   `enter` to run it.
 
 ## Using it
 
@@ -29,11 +29,11 @@ The main menu:
 
 | # | Item | What it does |
 |---|------|--------------|
-| 1 | HEX ADD/SUBTRACT | Type `24+31+52+44` → `= EB HEX`, `= 235 DEC`, `LAST 2 HEX DIGITS: EB`. `-` works too (`10-20` → `-10`), and signs combine (`10-⁻5` → `15`). Spaces or commas also mean "add". Up to 12 digits per number. Leave it blank and press `enter` to go back. |
-| 2 | DEC TO HEX | Type a decimal number (or a sum like `200+35`) → hex and decimal. |
-| 3 | DGH CHECKSUM | Pick the first character (`$`, `#`, `*`, `?`, or none), then type the rest. For example, choose `$` and type `1RD`; the screen shows `$1RD` as you type. It shows each character's ASCII code with a running total, then `CHECKSUM = EB` and `SEND THIS: $1RDEB`. |
-| 4 | VERIFY A CHECKSUM | Same, but type the whole string **including** its last 2 checksum characters. Example: a long-form reply `*1RD+00072.10A4`: choose `*`, type `1RD+00072.10A4`. It says `MATCH - CHECKSUM OK`, or `WRONG! RECEIVED:` and what you typed. |
-| 5 | HEX BYTES CHECKSUM | Type hex bytes (e.g. `0300300002337A`). It shows the byte count, the sum, the last 2 hex digits of the sum, the two's complement (Intel HEX checksum / Modbus LRC) and the XOR of the bytes. Spaces and `:` are ignored. To check a whole Intel HEX line, type it with its checksum: the sum's last 2 digits are `00` when the line is good. |
+| 1 | HEX ADD/SUBTRACT | Type `24+31+52+44` → `= EB HEX`, `= 235 DEC`, `LAST 2 HEX DIGITS: EB`. `-` works too (`10-20` → `-10`), and signs combine (`10-⁻5` → `15`). Spaces or commas also mean "add". Numbers and the answer must stay below hex `E8D4A51000` (that's 10<sup>12</sup>, so any 9-digit hex number is fine); bigger ones say `NUMBER TOO BIG`. Leave it blank and press `enter` to go back. |
+| 2 | DEC TO HEX | Type a decimal number (up to 12 digits, or a sum like `200+35`) → hex and decimal. |
+| 3 | DGH CHECKSUM | Pick the first character (`$`, `#`, `*`, `?`, or none), then type the rest. For example, choose `$` and type `1RD`; the screen shows `$1RD` as you type. It shows each character's ASCII code in hex (`$=24 1=31 R=52 D=44`), the sum (`SUM = EB HEX (235 DEC)`), `CHECKSUM = EB` and `SEND THIS: $1RDEB`. For a reply (`*`, `?` or none) the last line says `WITH CHECKSUM:` instead, since you don't send replies. Up to 120 characters. |
+| 4 | VERIFY A CHECKSUM | Same, but type the whole string **including** its last 2 checksum characters. Example: a long-form reply `*1RD+00072.10A4`: choose `*`, type `1RD+00072.10A4`. It says `MATCH - CHECKSUM OK`, or `WRONG! RECEIVED:` and the 2 characters you typed. |
+| 5 | HEX BYTES CHECKSUM | Type hex bytes (e.g. `0300300002337A`). It shows the byte count, the sum (in hex), the last 2 hex digits of the sum, the two's complement (Intel HEX checksum / Modbus LRC) and the XOR of the bytes. Spaces, commas and `:` are ignored. To check a whole Intel HEX line, type it with its checksum: the sum's last 2 digits are `00` when the line is good. |
 | 6 | HELP | The checksum rule, `$` vs `#`, and key tips, on the calculator. |
 | 7 | QUIT | Exits and deletes the string variables it used (Str0–Str9). |
 
@@ -70,6 +70,9 @@ program reproduces every one:
   type the rest.
 - A module that gets a wrong checksum answers `?1 BAD CHECKSUM` and doesn't
   run the command. The checksum is optional: a command without one still works.
+- The manuals don't say whether error replies (`?1 ...`) ever carry a
+  checksum. Only use VERIFY with `?` on a reply that ends in 2 extra hex
+  characters.
 - Commands are uppercase. Leave spaces out of checksummed commands (the
   module skips spaces, and the manuals don't say whether they count).
 
@@ -81,9 +84,12 @@ program reproduces every one:
 - `*` is the `×` key. `-` is the `−` key (the `(−)` key works too). Space is
   `alpha` `0`. `:` is `alpha` `.` and `?` is `alpha` `(−)`.
 - `$` and `#` aren't on the keypad, which is why you pick the first character
-  from a menu. The double quote `"` (`alpha` `+`) can't be checksummed: the
-  program says `CAN'T USE THIS CHARACTER`. Strings can be up to 150 characters. Lowercase letters can't be typed on a CE either, so the
-  program only accepts uppercase.
+  from a menu.
+- The double quote `"` (`alpha` `+`) can't be checksummed: the program says
+  `CAN'T USE THIS CHARACTER`. Lowercase can't be typed on a CE, so commands
+  are uppercase (as DGH requires anyway).
+- When a screen ends in `(PRESS ENTER)`, the program is waiting: press
+  `enter` for the next page or to carry on.
 - Pressing `enter` on a blank line goes back a menu. (If your calculator
   ever just asks again instead, press `2nd` `quit` to leave the program.)
 - Press `on` at any time to break out of the program (choose **Quit**).
@@ -110,5 +116,6 @@ Python. It also enforces calculator rules:
 
 - no `Goto`/`Menu(` from inside a block (memory leak)
 - no line wider than 26 columns
+- only 9 of the 10 rows hold `Disp` output (writing row 10 scrolls the screen)
 - no output that scrolls off, gets cleared, or is covered by a menu before you
-  can read it
+  can read it, and every pause shows `(PRESS ENTER)`

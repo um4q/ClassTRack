@@ -11,6 +11,9 @@
 # Rules kept everywhere:
 # * Goto / Menu( only at the top level, never from inside an unfinished
 #   If-Then / For( / While block (that leaks memory and ends in ERR:MEMORY).
+# * Disp can't keep text on the last of the 10 rows (writing there scrolls
+#   the screen), so at most 9 lines are on screen at once; every Pause is
+#   preceded by a "(PRESS ENTER)" line, counted in that budget.
 # * Never work on an empty string. Before every Input the string gets the
 #   sentinel "@" (which can't be typed on the keypad), so a blank ENTER is
 #   caught whether the OS stores "" or keeps the old value.
@@ -66,6 +69,7 @@ If N≥1ᴇ12:1→O
 Else
 If Str2="+" or Str2="-" or Str2="⁻" or Str2=" " or Str2=",":Then
 T+S*N→T
+If abs(T)≥1ᴇ12:1→O
 If K:1→S
 0→N
 0→K
@@ -81,7 +85,9 @@ If P:Then
 Disp "NOT A DIGIT:",sub(Str1,P,1)
 End
 If O and not(P):Then
-Disp "NUMBER TOO BIG"
+Disp "NUMBER TOO BIG, MAX IS"
+If B=16:Disp "E8D4A50FFF HEX"
+If B=10:Disp "999999999999"
 End
 If P or O:Goto N2
 # hex of |T| -> Str6, decimal of |T| -> Str5
@@ -142,7 +148,8 @@ Goto F6
 Lbl F4
 "?"→Str7
 ClrHome
-Disp "TYPE THE REST OF THE REPLY","EG 1 BAD CHECKSUM"
+Disp "TYPE THE REST OF THE REPLY"
+If W=0:Disp "EG 1 BAD CHECKSUM"
 Goto F6
 Lbl F5
 ">"→Str7
@@ -155,13 +162,13 @@ Input Str7,Str1
 If length(Str1)=0:Goto F
 If Str1="@":Goto F
 If Str7≠">":Str7+Str1→Str1
-If length(Str1)>150:Then
-Disp "TOO LONG (MAX 150)"
+If length(Str1)>120:Then
+Disp "TOO LONG (MAX 120)","(PRESS ENTER)"
 Pause
 End
-If length(Str1)>150:Goto F
+If length(Str1)>120:Goto F
 If W=1 and length(Str1)<3:Then
-Disp "TOO SHORT - TYPE THE","STRING AND ITS 2-CHARACTER","CHECKSUM"
+Disp "TOO SHORT - TYPE THE","STRING AND ITS 2-CHARACTER","CHECKSUM","(PRESS ENTER)"
 Pause
 End
 If W=1 and length(Str1)<3:Goto F
@@ -169,15 +176,20 @@ If W=1:Then
 sub(Str1,length(Str1)-1,2)→Str9
 sub(Str1,1,length(Str1)-2)→Str1
 End
-# one row per character: char, its ASCII hex, running sum (hex)
+# Show every character as c=XX (its ASCII code in hex), 5 to a line, 8
+# lines a page, and add them up in S. Str4 = line being built (R pairs in
+# it), Q = lines on this page. Str6 collects the characters as counted
+# ((-) becomes -), behind a "?" so it is never empty.
 ClrHome
-Disp "CHR  HEX  SUM"
 0→S
 0→P
 0→R
+0→Q
+"?"→Str6
 For(I,1,length(Str1))
 sub(Str1,I,1)→Str2
 If Str2="⁻":"-"→Str2
+Str6+Str2→Str6
 inString(Str8,Str2)→C
 If C:C+31+(C>2)+26*(C>64)→C
 If not(C) and not(P):I→P
@@ -188,6 +200,48 @@ Else
 "?"→Str2
 "??"→Str3
 End
+If R:Then
+Str4+" "+Str2+"="+Str3→Str4
+Else
+Str2+"="+Str3→Str4
+End
+R+1→R
+If R=5:Then
+Disp Str4
+0→R
+Q+1→Q
+End
+If Q=8 and I<length(Str1):Then
+Disp "(PRESS ENTER)"
+Pause
+ClrHome
+0→Q
+End
+End
+If R:Then
+Disp Str4
+Q+1→Q
+End
+# G=1: the result fits after "SEND THIS: " on one line.
+# E = lines still to come, "(PRESS ENTER)" included: the error (3); or
+# SUM, CHECKSUM, then 2 verify lines, or the result (1 line, or a label +
+# 26-column pieces). If they don't fit under the Q lines in the 9 usable
+# rows, wait and start a new screen.
+(Str7="$" or Str7="#") and length(Str1)<14→G
+If P:3→E
+If not(P) and W=1:5→E
+If not(P) and W=0:4+not(G)*int((length(Str1)+27)/26)→E
+If Q+E>9:Then
+Disp "(PRESS ENTER)"
+Pause
+ClrHome
+End
+If P:Then
+Disp "CAN'T USE THIS CHARACTER:",sub(Str1,P,1),"(PRESS ENTER)"
+Pause
+End
+If P:Goto F
+# hex of S -> Str4
 S→V
 sub(Str0,V-16*int(V/16)+1,1)→Str4
 int(V/16)→V
@@ -195,30 +249,6 @@ While V
 sub(Str0,V-16*int(V/16)+1,1)+Str4→Str4
 int(V/16)→V
 End
-Disp " "+Str2+"   "+Str3+"   "+Str4
-R+1→R
-If R=8 and I<length(Str1):Then
-Pause
-ClrHome
-Disp "CHR  HEX  SUM"
-0→R
-End
-End
-# E = lines still to show under the table: the error (2), or SUM and
-# CHECKSUM plus 2 verify lines or "SEND THIS:" and its 26-column pieces.
-# If they don't fit on the 10-line screen, wait and start a new screen.
-If P:2→E
-If not(P) and W=1:4→E
-If not(P) and W=0:3+int((length(Str1)+27)/26)→E
-If R+E>9:Then
-Pause
-ClrHome
-End
-If P:Then
-Disp "CAN'T USE THIS CHARACTER:",sub(Str1,P,1)
-Pause
-End
-If P:Goto F
 # Str4 = sum in hex, Str5 = sum in decimal, Str3 = checksum (last 2 hex)
 S→V
 sub(Str0,V-10*int(V/10)+1,1)→Str5
@@ -229,12 +259,16 @@ int(V/10)→V
 End
 S-256*int(S/256)→L
 sub(Str0,int(L/16)+1,1)+sub(Str0,L-16*int(L/16)+1,1)→Str3
-Disp "SUM = "+Str4+" HEX ("+Str5+")","CHECKSUM = "+Str3
+Disp "SUM = "+Str4+" HEX ("+Str5+" DEC)","CHECKSUM = "+Str3
 If W=0:Then
-Str1+Str3→Str5
-Disp "SEND THIS:"
+sub(Str6,2,length(Str1))+Str3→Str5
+If G:Disp "SEND THIS: "+Str5
+If not(G):Then
+If Str7="$" or Str7="#":Disp "SEND THIS:"
+If Str7≠"$" and Str7≠"#":Disp "WITH CHECKSUM:"
 For(I,1,length(Str5),26)
 Disp sub(Str5,I,min(26,length(Str5)-I+1))
+End
 End
 Else
 If Str9=Str3:Then
@@ -243,6 +277,7 @@ Else
 Disp "WRONG! RECEIVED:",Str9
 End
 End
+Disp "(PRESS ENTER)"
 Pause
 Goto F
 #
@@ -310,19 +345,19 @@ sub(Str0,int(L/16)+1,1)+sub(Str0,L-16*int(L/16)+1,1)→Str3
 256-L-256*(L=0)→L
 sub(Str0,int(L/16)+1,1)+sub(Str0,L-16*int(L/16)+1,1)→Str6
 sub(Str0,int(X/16)+1,1)+sub(Str0,X-16*int(X/16)+1,1)→Str7
-Disp Str5+" BYTES, SUM = "+Str4,"SUM, LAST 2 DIGITS: "+Str3,"2'S COMP (INTEL/LRC): "+Str6,"XOR OF BYTES: "+Str7
+Disp "BYTES: "+Str5,"SUM = "+Str4+" HEX","SUM, LAST 2 DIGITS: "+Str3,"2'S COMP (INTEL/LRC): "+Str6,"XOR OF BYTES: "+Str7
 Goto H2
 #
 # ---------------------------------------------------------------- help
 Lbl K
 ClrHome
-Disp "DGH CHECKSUM = LAST 2 HEX","DIGITS OF THE SUM OF THE","ASCII CODES OF EVERY","CHARACTER: PROMPT ($ OR #)","+ ADDRESS + COMMAND + DATA","(NOT THE CARRIAGE RETURN)","EG $1RD:","24+31+52+44 = EB","SEND $1RDEB"
+Disp "DGH CHECKSUM = LAST 2 HEX","DIGITS OF THE SUM OF THE","ASCII CODES OF EVERY CHAR:","PROMPT ($ OR #), ADDRESS,","COMMAND, DATA (NOT THE CR)","EG $1RD:","24+31+52+44 = EB","SEND $1RDEB","(PRESS ENTER)"
 Pause
 ClrHome
-Disp "$ GETS A SHORT REPLY","WITH NO CHECKSUM.","# GETS A LONG REPLY THAT","ECHOES THE COMMAND AND","ENDS IN A CHECKSUM, EG","#1RD -> *1RD+00072.10A4","CHECK IT: VERIFY, THEN *","DON'T PUT SPACES IN","CHECKSUMMED COMMANDS"
+Disp "$ GETS A SHORT REPLY WITH","NO CHECKSUM. # GETS A LONG","REPLY THAT ECHOES THE","COMMAND AND ENDS IN A","CHECKSUM:","#1RD -> *1RD+00072.10A4","CHECK IT: VERIFY, THEN *","NO SPACES IN COMMANDS","(PRESS ENTER)"
 Pause
 ClrHome
-Disp "KEYS:","ALPHA = ONE LETTER","2ND ALPHA = LETTER LOCK","* = THE MULTIPLY KEY","- = MINUS OR (-) KEY","$ # ARE IN THE","FIRST-CHARACTER MENU","BLANK ENTRY = GO BACK"
+Disp "KEYS:","ALPHA = ONE LETTER","2ND ALPHA = LETTER LOCK","* = THE MULTIPLY KEY","- = MINUS OR (-) KEY","$ # ARE IN THE","FIRST-CHARACTER MENU","BLANK ENTRY = GO BACK","(PRESS ENTER)"
 Pause
 Goto M
 #

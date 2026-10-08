@@ -64,10 +64,23 @@ def run(*keys):
     return result
 
 
-def checksum_lines(prompt: str, typed: str, verify: bool = False) -> list[str]:
+CUE = "(PRESS ENTER)"
+
+
+def checksum_lines(prompt: str, typed, verify: bool = False) -> list[str]:
+    """Lines shown by DGH CHECKSUM / VERIFY, without the "(PRESS ENTER)" cues."""
     keys = [("menu", VERIFY if verify else DGH), ("menu", PROMPTS[prompt]), ("input", typed),
             ("menu", BACK), ("menu", QUIT)]
-    return run(*keys).lines
+    return [line for line in run(*keys).lines if line != CUE]
+
+
+def sent(lines: list[str]) -> str:
+    """The full string (with checksum) that DGH CHECKSUM shows at the end."""
+    for line in lines:
+        if line.startswith("SEND THIS: "):
+            return line[len("SEND THIS: "):]
+    label = "SEND THIS:" if "SEND THIS:" in lines else "WITH CHECKSUM:"
+    return "".join(lines[lines.index(label) + 1:])
 
 
 # ------------------------------------------------------------ build / file
@@ -174,8 +187,8 @@ def test_hex_add_random():
 def test_hex_add_errors_then_keeps_going():
     r = run(("menu", HEX_ADD), ("input", "2G"), ("input", "FFFFFFFFFFF"),
             ("input", "1+1"), ("input", ""), ("menu", QUIT))
-    assert r.lines[4:] == ["NOT A DIGIT:", "G", "NUMBER TOO BIG", "= 2 HEX", "= 2 DEC",
-                           "LAST 2 HEX DIGITS: 02"]
+    assert r.lines[4:] == ["NOT A DIGIT:", "G", "NUMBER TOO BIG, MAX IS", "E8D4A50FFF HEX",
+                           "= 2 HEX", "= 2 DEC", "LAST 2 HEX DIGITS: 02"]
     assert r.finished
 
 
@@ -190,18 +203,22 @@ def test_dec_to_hex():
 
 # ------------------------------------------------------------ DGH checksum
 def test_dgh_example_from_manual():
-    lines = checksum_lines("$", "1RD")
-    assert lines[2:] == [
-        "CHR  HEX  SUM",
-        " $   24   24",
-        " 1   31   55",
-        " R   52   A7",
-        " D   44   EB",
-        "SUM = EB HEX (235)",
+    r = run(("menu", DGH), ("menu", 1), ("input", "1RD"), ("menu", BACK), ("menu", QUIT))
+    assert r.screens()[1] == [            # one screen, no extra page
+        "$=24 1=31 R=52 D=44",
+        "SUM = EB HEX (235 DEC)",
         "CHECKSUM = EB",
-        "SEND THIS:",
-        "$1RDEB",
+        "SEND THIS: $1RDEB",
+        CUE,
     ]
+
+
+@pytest.mark.parametrize("typed", ["1RD", "1DOFF", "1SU31070182", "1AO+00010.00"])
+def test_typical_lab_commands_fit_one_screen(typed):
+    r = run(("menu", DGH), ("menu", 1), ("input", typed), ("menu", BACK), ("menu", QUIT))
+    result = r.screens()[1]
+    assert result[-1] == CUE and len(result) <= 9
+    assert result[-2] == "SEND THIS: $" + typed + ref_checksum("$" + typed)
 
 
 @pytest.mark.parametrize("prompt", ["$", "#", "*", "?", ""])
@@ -214,14 +231,16 @@ def test_dgh_checksum_matches_reference(prompt):
         lines = checksum_lines(prompt, typed)
         full = prompt + typed
         total = sum(map(ord, full))
-        assert f"SUM = {total:X} HEX ({total})" in lines, typed
+        assert f"SUM = {total:X} HEX ({total} DEC)" in lines, typed
         assert f"CHECKSUM = {ref_checksum(full)}" in lines, typed
-        sent = "".join(lines[lines.index("SEND THIS:") + 1:])
-        assert sent == full + ref_checksum(full), typed
+        assert sent(lines) == full + ref_checksum(full), typed
+        pairs = " ".join(lines[:lines.index(f"SUM = {total:X} HEX ({total} DEC)")][-((len(full) + 4) // 5):])
+        assert pairs == " ".join(f"{c}={ord(c):02X}" for c in full), typed
 
 
-def test_dgh_long_command_pages_every_8_rows():
-    typed = "1" + "SU31070142" * 2
+@pytest.mark.parametrize("n", [4, 25, 40, 41, 45, 80, 81, 120])
+def test_dgh_long_command_pages(n):
+    typed = ("1" + "SU31070142" * 12)[:n - 1]
     r = run(("menu", DGH), ("menu", 1), ("input", typed), ("menu", BACK), ("menu", QUIT))
     pauses_before_result = 0
     for e in r.events:
@@ -229,10 +248,11 @@ def test_dgh_long_command_pages_every_8_rows():
             pauses_before_result += 1
         if e.kind == "disp" and e.value.startswith("CHECKSUM"):
             break
-    n = len(typed) + 1                     # + the "$"
-    full_pages = (n - 1) // 8              # Pause after every 8 rows...
-    last_page_rows = n - 8 * full_pages
-    expected = full_pages + (last_page_rows > 5)  # ...and before a crowded summary
+    breaks = (n - 1) // 40                   # a page is 8 lines of 5 characters
+    last_lines = -(-(n - 40 * breaks) // 5)
+    one_line = n < 14
+    lines_after = 4 + (0 if one_line else (n + 27) // 26)
+    expected = breaks + (last_lines + lines_after > 9)
     assert pauses_before_result == expected
     assert f"CHECKSUM = {ref_checksum('$' + typed)}" in r.lines
 
@@ -240,6 +260,7 @@ def test_dgh_long_command_pages_every_8_rows():
 def test_negative_key_counts_as_minus():
     lines = checksum_lines("*", "⁻00012.30")
     assert f"CHECKSUM = {ref_checksum('*-00012.30')}" in lines
+    assert sent(lines) == "*-00012.30" + ref_checksum("*-00012.30")  # shown as -, not ⁻
 
 
 def test_verify_match_and_mismatch():
@@ -254,7 +275,7 @@ def test_verify_match_and_mismatch():
 
 def test_verify_too_short():
     r = run(("menu", VERIFY), ("menu", 5), ("input", "AB"), ("menu", BACK), ("menu", QUIT))
-    assert r.lines[2:5] == ["TOO SHORT - TYPE THE", "STRING AND ITS 2-CHARACTER", "CHECKSUM"]
+    assert r.lines[2:6] == ["TOO SHORT - TYPE THE", "STRING AND ITS 2-CHARACTER", "CHECKSUM", CUE]
     assert r.finished
 
 
@@ -283,7 +304,7 @@ def test_lowercase_is_not_accepted():
 def test_dgh_manual_commands(prompt, typed, checksum):
     lines = checksum_lines(prompt, typed)
     assert f"CHECKSUM = {checksum}" in lines
-    assert prompt + typed + checksum in lines
+    assert f"SEND THIS: {prompt}{typed}{checksum}" in lines
 
 
 @pytest.mark.parametrize("reply", ["1RD+00072.10A4", "1DI8000B0"])
@@ -323,7 +344,8 @@ def test_hex_bytes(line):
     r = run(("menu", HEX_BYTES), ("input", line), ("input", ""), ("menu", QUIT))
     ref = ref_bytes(line)
     assert r.lines[5:] == [
-        f"{ref['count']} BYTES, SUM = {ref['sum']:X}",
+        f"BYTES: {ref['count']}",
+        f"SUM = {ref['sum']:X} HEX",
         f"SUM, LAST 2 DIGITS: {ref['low']:02X}",
         f"2'S COMP (INTEL/LRC): {ref['twos']:02X}",
         f"XOR OF BYTES: {ref['xor']:02X}",
@@ -346,8 +368,8 @@ def test_hex_bytes_random_xor_and_sum():
         line = data.hex().upper()
         r = run(("menu", HEX_BYTES), ("input", line), ("input", ""), ("menu", QUIT))
         ref = ref_bytes(line)
-        assert r.lines[5] == f"{ref['count']} BYTES, SUM = {ref['sum']:X}"
-        assert r.lines[8] == f"XOR OF BYTES: {ref['xor']:02X}"
+        assert r.lines[5:7] == [f"BYTES: {ref['count']}", f"SUM = {ref['sum']:X} HEX"]
+        assert r.lines[9] == f"XOR OF BYTES: {ref['xor']:02X}"
 
 
 # -------------------------------------------------------------- the rest
@@ -375,7 +397,21 @@ def test_signs_reset_after_each_number():
                                           (HEX_ADD, "1+" + "F" * 120)])
 def test_huge_numbers_say_too_big_instead_of_overflowing(mode, digits):
     r = run(("menu", mode), ("input", digits), ("input", ""), ("menu", QUIT))
-    assert "NUMBER TOO BIG" in r.lines
+    assert "NUMBER TOO BIG, MAX IS" in r.lines
+
+
+@pytest.mark.parametrize("mode, expr, ok", [
+    (HEX_ADD, "E8D4A50FFF", True), (HEX_ADD, "E8D4A51000", False),
+    (HEX_ADD, "E8D4A50FFF+1", False), (HEX_ADD, "E8D4A50FFF+1-1", False),
+    (DEC_TO_HEX, "999999999999", True), (DEC_TO_HEX, "1000000000000", False),
+    (HEX_ADD, "-E8D4A50FFF", True), (HEX_ADD, "-E8D4A50FFF-1", False),
+])
+def test_limit_is_below_1e12_including_running_total(mode, expr, ok):
+    r = run(("menu", mode), ("input", expr), ("input", ""), ("menu", QUIT))
+    assert ("NUMBER TOO BIG, MAX IS" not in r.lines) == ok
+    if not ok:
+        i = r.lines.index("NUMBER TOO BIG, MAX IS")
+        assert r.lines[i + 1] == ("E8D4A50FFF HEX" if mode == HEX_ADD else "999999999999")
 
 
 def test_simulator_enforces_the_1e100_limit():
@@ -398,7 +434,7 @@ def test_long_tokens_are_reported_on_their_own_line(mode, keys, expect):
 
 def test_long_token_in_a_dgh_command():
     r = run(("menu", DGH), ("menu", 1), ("input", ["1", "R", "sin("]), ("menu", BACK), ("menu", QUIT))
-    assert " ?   ??   " in [line[:10] for line in r.lines]
+    assert "$=24 1=31 R=52 ?=??" in r.lines
     i = r.lines.index("CAN'T USE THIS CHARACTER:")
     assert r.lines[i + 1] == "sin("
 
@@ -406,22 +442,24 @@ def test_long_token_in_a_dgh_command():
 def test_verify_with_long_tokens_as_the_checksum():
     r = run(("menu", VERIFY), ("menu", 1), ("input", ["1", "R", "D", "sin(", "cos("]),
             ("menu", BACK), ("menu", QUIT))
-    assert r.lines[-2:] == ["WRONG! RECEIVED:", "sin(cos("]
+    assert r.lines[-3:] == ["WRONG! RECEIVED:", "sin(cos(", CUE]
 
 
-@pytest.mark.parametrize("length", range(1, 71))
+@pytest.mark.parametrize("length", range(1, 120))
 @pytest.mark.parametrize("verify", [False, True])
 def test_every_length_fits_the_screen(length, verify):
     """sim raises RuleViolation if any line scrolls off before it can be read."""
     rnd = random.Random(length)
     typed = "".join(rnd.choice(TYPABLE.replace(" ", "")) for _ in range(length))
     full = "$" + typed
+    if verify and len(full) + 2 > 120:
+        pytest.skip("over the 120-character limit once the checksum is typed too")
     if verify:
         lines = checksum_lines("$", typed + ref_checksum(full), verify=True)
         assert lines[-1] == "MATCH - CHECKSUM OK"
     else:
         lines = checksum_lines("$", typed)
-        assert "".join(lines[lines.index("SEND THIS:") + 1:]) == full + ref_checksum(full)
+        assert sent(lines) == full + ref_checksum(full)
 
 
 @pytest.mark.parametrize("typed", ["1RDθ123", "1RDθ1234567890123", "θ"])
@@ -431,12 +469,12 @@ def test_bad_character_on_a_full_page(typed):
 
 
 def test_input_length_limit():
-    r = run(("menu", DGH), ("menu", 1), ("input", "1" * 150), ("menu", BACK), ("menu", QUIT))
+    r = run(("menu", DGH), ("menu", 1), ("input", "1" * 120), ("menu", BACK), ("menu", QUIT))
     kinds = [e.kind for e in r.events]
-    i = next(k for k, e in enumerate(r.events) if e.value == "TOO LONG (MAX 150)")
-    assert kinds[i + 1:i + 3] == ["pause", "menu"]  # straight back, no checksum
-    ok = checksum_lines("$", "1" * 149)
-    assert f"CHECKSUM = {ref_checksum('$' + '1' * 149)}" in ok
+    i = next(k for k, e in enumerate(r.events) if e.value == "TOO LONG (MAX 120)")
+    assert kinds[i + 1:i + 4] == ["disp", "pause", "menu"]  # cue, then straight back
+    ok = checksum_lines("$", "1" * 119)
+    assert f"CHECKSUM = {ref_checksum('$' + '1' * 119)}" in ok
 
 
 @pytest.mark.parametrize("prompt, typed", [("#", "1RDEA"), ("?", "1 BAD CHECKSUM"), ("", "$1RDEB")])
@@ -459,7 +497,7 @@ def test_only_first_bad_character_is_reported():
 
 def test_hex_bytes_commas_and_colon_are_ignored():
     r = run(("menu", HEX_BYTES), ("input", ":01,03,00 0A"), ("input", ""), ("menu", QUIT))
-    assert r.lines[5] == "4 BYTES, SUM = E"
+    assert r.lines[5:7] == ["BYTES: 4", "SUM = E HEX"]
 
 
 def test_lookalike_tokens_are_not_ascii():
@@ -468,3 +506,51 @@ def test_lookalike_tokens_are_not_ascii():
     assert sim.program_tokens(data)[1] == "N"
     lookalike = sim.program_tokens(bytes.fromhex("6202"))  # statistics n
     assert lookalike == ["n<6202>"]
+
+
+# ---------------------------------------------------- round-2 follow-ups
+SCENARIOS = [
+    [("menu", HELP)],
+    [("menu", DGH), ("menu", 1), ("input", "1RD"), ("menu", BACK)],
+    [("menu", DGH), ("menu", 1), ("input", "1" * 60), ("menu", BACK)],
+    [("menu", DGH), ("menu", 3), ("input", "1RD+00072.10"), ("menu", BACK)],
+    [("menu", DGH), ("menu", 1), ("input", "1Rθ"), ("menu", BACK)],
+    [("menu", DGH), ("menu", 1), ("input", "1" * 130), ("menu", BACK)],
+    [("menu", VERIFY), ("menu", 1), ("input", "1RDEB"), ("menu", BACK)],
+    [("menu", VERIFY), ("menu", 5), ("input", "AB"), ("menu", BACK)],
+]
+
+
+@pytest.mark.parametrize("keys", SCENARIOS)
+def test_every_pause_says_press_enter(keys):
+    """A first-time user sees "(PRESS ENTER)" whenever the program waits."""
+    r = run(*keys, ("menu", QUIT))
+    for i, e in enumerate(r.events):
+        if e.kind == "pause":
+            assert r.events[i - 1].kind == "disp" and r.events[i - 1].value == CUE
+
+
+def test_screen_model_keeps_the_last_row_free():
+    """Disp can't keep text on row 10, so 10 lines in a row lose the first."""
+    data = build.tokenize("ClrHome\n" + "\n".join(f'Disp "L{i}"' for i in range(10)) + "\nPause")
+    with pytest.raises(sim.RuleViolation, match="L0"):
+        sim.run_program(data, [])
+    data = build.tokenize("ClrHome\n" + "\n".join(f'Disp "L{i}"' for i in range(9)) + "\nPause")
+    sim.run_program(data, [])
+
+
+@pytest.mark.parametrize("prompt, label", [("$", "SEND THIS"), ("#", "SEND THIS"),
+                                           ("*", "WITH CHECKSUM:"), ("?", "WITH CHECKSUM:"),
+                                           ("", "WITH CHECKSUM:")])
+def test_only_commands_say_send(prompt, label):
+    lines = checksum_lines(prompt, "1RD")
+    assert any(line.startswith(label) for line in lines)
+    if prompt not in ("$", "#"):  # replies aren't sent by the student
+        assert not any(line.startswith("SEND THIS") for line in lines)
+
+
+def test_error_reply_verify_has_no_misleading_example():
+    r = run(("menu", VERIFY), ("menu", PROMPTS["?"]), ("input", "1 BAD CHECKSUMCA"),
+            ("menu", BACK), ("menu", QUIT))
+    assert "EG 1 BAD CHECKSUM" not in r.lines
+    assert r.lines[:2] == ["TYPE THE REST OF THE REPLY", "THEN ITS 2 CHECKSUM CHARS"]

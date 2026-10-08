@@ -85,7 +85,7 @@ class Event:
 
 
 class Screen:
-    """The 10-row home screen. A row counts as read once the program waits for
+    """The 10-row home screen (9 usable by Disp). A row counts as read once the program waits for
     the user (Pause, Input, or the program ending) while it is on screen; a
     row that scrolls off, is cleared, or is covered by a Menu( before that is
     a RuleViolation - the user never got to see it."""
@@ -99,9 +99,11 @@ class Screen:
             raise RuleViolation(f"{how} before the user could read: {unread}")
 
     def add(self, line: str, read: bool = False):
+        # Writing the last (10th) row scrolls the screen straight away, so at
+        # most 9 rows of Disp/Input output are visible at once.
         for k in range(0, max(len(line), 1), SCREEN_COLS):
             self.rows.append([line[k:k + SCREEN_COLS], read])
-            if len(self.rows) > SCREEN_ROWS:
+            if len(self.rows) > SCREEN_ROWS - 1:
                 top = self.rows.pop(0)
                 if not top[1]:
                     raise RuleViolation(f"line scrolled off unread: {top[0]!r}")
