@@ -402,11 +402,13 @@ def test_huge_numbers_say_too_big_instead_of_overflowing(mode, digits):
 
 @pytest.mark.parametrize("mode, expr, ok", [
     (HEX_ADD, "E8D4A50FFF", True), (HEX_ADD, "E8D4A51000", False),
-    (HEX_ADD, "E8D4A50FFF+1", False), (HEX_ADD, "E8D4A50FFF+1-1", False),
+    (HEX_ADD, "E8D4A50FFF+1", False), (HEX_ADD, "E8D4A50FFF+1-1", True),
+    (DEC_TO_HEX, "999999999999+1-2", True),
+    (HEX_ADD, "+".join(["E8D4A50FFF"] * 11) + "-" + "-".join(["E8D4A50FFF"] * 11), False),
     (DEC_TO_HEX, "999999999999", True), (DEC_TO_HEX, "1000000000000", False),
     (HEX_ADD, "-E8D4A50FFF", True), (HEX_ADD, "-E8D4A50FFF-1", False),
 ])
-def test_limit_is_below_1e12_including_running_total(mode, expr, ok):
+def test_limit_is_below_1e12(mode, expr, ok):
     r = run(("menu", mode), ("input", expr), ("input", ""), ("menu", QUIT))
     assert ("NUMBER TOO BIG, MAX IS" not in r.lines) == ok
     if not ok:

@@ -53,6 +53,8 @@ If Str1="@":Goto M
 # T = total, N = number being typed (K = has digits), S = its sign.
 # + space , end a number; - and (-) flip the sign, so 10-⁻5 = 15.
 # N stops growing at 1E12 (flagged by O) so 90 F's can't hit ERR:OVERFLOW.
+# Each number and the answer must be < 1E12; the running total only has to
+# stay < 1E13 so it stays exact (14 digits) along the way.
 0→T
 0→N
 0→K
@@ -69,7 +71,7 @@ If N≥1ᴇ12:1→O
 Else
 If Str2="+" or Str2="-" or Str2="⁻" or Str2=" " or Str2=",":Then
 T+S*N→T
-If abs(T)≥1ᴇ12:1→O
+If abs(T)≥1ᴇ13:1→O
 If K:1→S
 0→N
 0→K
